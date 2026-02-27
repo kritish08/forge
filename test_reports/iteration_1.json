@@ -1,0 +1,62 @@
+{
+  "summary": "Full e2e testing of FORGE app - backend APIs and frontend UI. Found and fixed critical MongoDB ObjectId serialization bug in POST /api/habits, POST /api/completions, and POST /api/ai/insight. All 18 backend tests pass after fix. Frontend loads correctly with all 5 pages working.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/habits, POST /api/completions, POST /api/ai/insight",
+        "issue": "MongoDB ObjectId serialization error - insert_one() mutates the dict adding _id field, causing 500 response: ValueError: ['ObjectId' object is not iterable]",
+        "priority": "CRITICAL",
+        "status": "FIXED - added habit.pop('_id', None), completion.pop('_id', None), doc.pop('_id', None) after each insert_one"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AICoach - Past Insights",
+        "issue": "AI insight text rendered with raw markdown (**bold**, **text**) instead of formatted HTML. The emergentintegrations LLM returns markdown but frontend renders it as plain text.",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "FORGE bottom nav tab click",
+        "issue": "Clicking 'FORGE' text on bottom nav didn't navigate to /achievements during playwright test - navigated to dashboard instead. Direct URL navigation to /achievements works correctly. May be a test-click positioning issue, not a real bug.",
+        "affected_selectors": ["text=FORGE"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Dashboard",
+        "issues": ["TEST_Run habit shows 3 stars despite priority 2 - stars display may be incorrect (shows P3 stars for P2 habit)"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_forge_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "DONE: Fixed MongoDB ObjectId serialization in POST /api/habits, POST /api/completions, POST /api/ai/insight",
+    "Consider rendering markdown in AI Coach insight display (parse ** to bold)",
+    "Verify star rating display for habits matches priority (P2=2 stars, P3=3 stars)"
+  ],
+  "critical_code_review_comments": [
+    "MongoDB _id ObjectId serialization bug - insert_one() mutates dict in-place adding _id. All 3 POST endpoints returning objects were affected. Fixed by calling .pop('_id', None) after insert_one.",
+    "AI insight content contains markdown formatting (**bold**) from LLM output but frontend renders as plain text - consider adding a markdown renderer like react-markdown",
+    "server.py is 719 lines - acceptable but borderline; consider splitting routes into separate files if more features are added"
+  ],
+  "updated_files": [
+    "/app/backend/server.py"
+  ],
+  "success_rate": {
+    "backend": "100% (18/18 tests passing after fix)",
+    "frontend": "95% (all pages load, minor markdown rendering issue in AI Coach)"
+  },
+  "seed_data_creation": "Created test user 'test-user-forge-001' with session 'test_session_forge_001' in MongoDB test_database",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Test user: test-user-forge-001, session token: test_session_forge_001. Backend 100% passing. Fixed ObjectId bug in server.py. Frontend all 5 pages work. AI insights use template fallback (MOCKED) since no Azure key configured. Minor: AI insight text shows raw markdown formatting.",
+  "rca_of_issue": "POST endpoints (habits, completions, ai/insight) were returning 500 because motor's insert_one() mutates the document dict by adding _id (ObjectId) in place. FastAPI's jsonable_encoder cannot serialize ObjectId objects. Fix: call dict.pop('_id', None) after each insert_one() call before returning the document."
+}

@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongo:
+    image: mongo:7.0
+    container_name: forge-mongo
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_DATABASE=forge_db
+    volumes:
+      - mongo-data:/data/db
+      - mongo-config:/data/configdb
+    ports:
+      - "27017:27017"
+    networks:
+      - forge-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: forge-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+      - DB_NAME=forge_db
+      - CORS_ORIGINS=http://localhost:3000,https://yourdomain.com
+    ports:
+      - "8001:8001"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - forge-network
+    volumes:
+      - ./backend:/app
+    command: uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: forge-frontend
+    restart: unless-stopped
+    env_file:
+      - ./frontend/.env
+    environment:
+      - REACT_APP_BACKEND_URL=http://localhost:8001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - forge-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: yarn start
+
+networks:
+  forge-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
+    driver: local
+  mongo-config:
+    driver: local
