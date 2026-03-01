@@ -22,7 +22,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 AZURE_ENDPOINT = os.environ.get("AZURE_ENDPOINT", "https://kyrex-hub-resource.openai.azure.com/openai/v1/")
 AZURE_MODEL = os.environ.get("AZURE_MODEL", "gpt-5.2")
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+AZURE_API_KEY = os.environ.get("AZURE_API_KEY", "")
 APP_URL = os.environ.get("APP_URL", "http://localhost")
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "")
 ALGORITHM = "HS256"
@@ -508,28 +508,24 @@ USER REFLECTION: {reflection or 'No reflection provided'}
 DIRECT MODE REASON: {user.get('direct_mode_reason', 'N/A') if mode == 'direct' else 'N/A'}
 Generate personalized insight:"""
 
-    azure_key = decrypt_value(user.get("azure_api_key", ""))
-    if azure_key:
+    if AZURE_API_KEY:
         try:
-            from openai import OpenAI as AzureOpenAI
-            ai_client = AzureOpenAI(base_url=user.get("azure_endpoint", AZURE_ENDPOINT), api_key=azure_key)
-            resp = ai_client.chat.completions.create(
-                model=user.get("azure_model", AZURE_MODEL),
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}],
-                temperature=0.7, max_tokens=600)
-            return resp.choices[0].message.content
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(
+                base_url=AZURE_ENDPOINT,
+                api_key=AZURE_API_KEY
+            )
+            response = await client.chat.completions.create(
+                model=AZURE_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content}
+                ],
+                temperature=0.7
+            )
+            return response.choices[0].message.content
         except Exception as e:
             logger.error("Azure AI error: %s", e)
-
-    if EMERGENT_LLM_KEY:
-        try:
-            from emergentintegrations.llm.chat import LlmChat, UserMessage
-            chat = LlmChat(api_key=EMERGENT_LLM_KEY,
-                           session_id=f"forge-{user.get('user_id','anon')}-{int(time.time())}",
-                           system_message=system_prompt).with_model("openai", "gpt-5.2")
-            return await chat.send_message(UserMessage(text=user_content))
-        except Exception as e:
-            logger.error("Emergent AI error: %s", e)
 
     return generate_template_insight(context, mode)
 
@@ -591,7 +587,7 @@ async def login(data: LoginRequest, request: Request, response: Response):
                         samesite="none", path="/", max_age=30 * 24 * 60 * 60)
 
     safe = {k: v for k, v in user.items() if k not in ["password_hash"]}
-    safe["has_api_key"] = bool(user.get("azure_api_key"))
+    safe["has_api_key"] = bool(AZURE_API_KEY)
     return {"user": safe, "access_token": access_token}
 
 
@@ -1000,24 +996,23 @@ async def update_settings(data: UserSettingsUpdate, current_user=Depends(get_cur
 @api_router.post("/user/test-ai-key")
 async def test_ai_key(current_user=Depends(get_current_user)):
     """Test if the user's Azure AI API key is working"""
-    azure_key = decrypt_value(current_user.get("azure_api_key", ""))
+    azure_key = AZURE_API_KEY
     
     if not azure_key or azure_key.strip() == "":
-        raise HTTPException(status_code=400, detail="No API key configured")
+        raise HTTPException(status_code=400, detail="No API key configured on the server")
     
     try:
-        from openai import OpenAI as AzureOpenAI
-        ai_client = AzureOpenAI(
-            base_url=current_user.get("azure_endpoint", AZURE_ENDPOINT),
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(
+            base_url=AZURE_ENDPOINT,
             api_key=azure_key
         )
         
         # Simple test call
-        resp = ai_client.chat.completions.create(
-            model=current_user.get("azure_model", AZURE_MODEL),
+        resp = await client.chat.completions.create(
+            model=AZURE_MODEL,
             messages=[{"role": "user", "content": "Say 'FORGE test successful' in 3 words."}],
-            temperature=0.3,
-            max_tokens=20
+            temperature=0.3
         )
         
         result = resp.choices[0].message.content

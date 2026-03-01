@@ -1,26 +1,4 @@
-version: '3.8'
-
 services:
-  # MongoDB Database
-  mongo:
-    image: mongo:7.0
-    container_name: forge-mongo
-    restart: unless-stopped
-    environment:
-      - MONGO_INITDB_DATABASE=forge_db
-    volumes:
-      - mongo-data:/data/db
-      - mongo-config:/data/configdb
-    ports:
-      - "27017:27017"
-    networks:
-      - forge-network
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # FastAPI Backend
   backend:
     build:
@@ -31,21 +9,19 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - MONGO_URL=mongodb://mongo:27017
-      - DB_NAME=forge_db
-      - CORS_ORIGINS=http://localhost:3000,https://yourdomain.com
-    ports:
-      - "8001:8001"
-    depends_on:
-      mongo:
-        condition: service_healthy
+      # MongoDB Atlas connection string will be provided via .env
+      - CORS_ORIGINS=https://${DOMAIN_NAME},https://www.${DOMAIN_NAME}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.forge-api.rule=Host(`api-forge.zerp.me`)"
+      - "traefik.http.routers.forge-api.entrypoints=websecure"
+      - "traefik.http.routers.forge-api.tls=true"
+      - "traefik.http.services.forge-api.loadbalancer.server.port=8001"
     networks:
-      - forge-network
-    volumes:
-      - ./backend:/app
-    command: uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+      - n8n-singh_default
+    command: uvicorn server:app --host 0.0.0.0 --port 8001
 
-  # React Frontend
+  # React Frontend (Nginx Production Build)
   frontend:
     build:
       context: ./frontend
@@ -54,25 +30,31 @@ services:
     restart: unless-stopped
     env_file:
       - ./frontend/.env
-    environment:
-      - REACT_APP_BACKEND_URL=http://localhost:8001
-    ports:
-      - "3000:3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.forge-web.rule=Host(`${DOMAIN_NAME}`) || Host(`www.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.forge-web.entrypoints=websecure"
+      - "traefik.http.routers.forge-web.tls=true"
+      - "traefik.http.services.forge-web.loadbalancer.server.port=80"
     depends_on:
       - backend
     networks:
-      - forge-network
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    command: yarn start
+      - n8n-singh_default
+
+  # Automated Daily AWS S3 MongoDB Backups
+  backup:
+    build:
+      context: ./backup
+      dockerfile: Dockerfile
+    container_name: forge-backup
+    restart: unless-stopped
+    # Ensure MONGO_URL, S3_BUCKET, and AWS_REGION are in backend/.env, 
+    # or duplicate them here if you prefer a separate backup/.env
+    env_file:
+      - ./backend/.env
 
 networks:
-  forge-network:
-    driver: bridge
-
-volumes:
-  mongo-data:
-    driver: local
-  mongo-config:
-    driver: local
+  # This connects to the 'default' network created by your n8n docker-compose file.
+  # The prefix 'n8n-singh_' is generated because your n8n compose file is in the 'n8n-singh' folder.
+  n8n-singh_default:
+    external: true

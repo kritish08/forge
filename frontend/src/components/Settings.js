@@ -460,83 +460,27 @@ export default function Settings() {
         {activeTab === "ai" && (
           <div className="space-y-4">
             <div className="bg-white rounded-2xl border border-gray-100 p-5">
-              <h3 className="font-bold font-chivo text-gray-900 mb-1">Azure AI Foundry Key</h3>
+              <h3 className="font-bold font-chivo text-gray-900 mb-1">AI Connection Status</h3>
               <p className="text-xs text-gray-400 font-manrope mb-4 leading-relaxed">
-                BYOK: Bring your own Azure AI Foundry API key to unlock real AI insights.
-                Your key is encrypted and stored securely.
+                Forge is globally connected to your private Azure AI Foundry workspace.
               </p>
 
               <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 mb-4">
-                <p className="text-xs font-bold text-orange-700 font-chivo mb-1">Endpoint</p>
-                <p className="text-xs text-orange-600 font-mono break-all">
-                  https://kyrex-hub-resource.openai.azure.com/openai/v1/
+                <p className="text-xs font-bold text-orange-700 font-chivo mb-1">Current State</p>
+                <p className="text-xs text-orange-600 font-mono">
+                  Globally Authenticated via Backend Host
                 </p>
-                <p className="text-xs font-bold text-orange-700 font-chivo mt-2 mb-1">Model</p>
-                <p className="text-xs text-orange-600 font-mono">gpt-5.2</p>
               </div>
 
-              {user?.has_api_key ? (
-                <div>
-                  <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-xl p-3 mb-3">
-                    <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span className="text-sm text-green-700 font-manrope font-medium">API key configured</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={testApiKey}
-                      disabled={saving}
-                      className="flex-1 py-3 bg-orange-500 text-white font-chivo font-bold text-sm uppercase tracking-wide rounded-xl hover:bg-orange-600 active:scale-95 transition-all disabled:opacity-50"
-                    >
-                      {saving ? "Testing..." : "Test Key"}
-                    </button>
-                    <button
-                      data-testid="remove-api-key-btn"
-                      onClick={removeApiKey}
-                      className="flex-1 py-3 border border-red-200 text-red-500 font-chivo font-bold text-sm uppercase tracking-wide rounded-xl hover:bg-red-50 active:scale-95 transition-all"
-                    >
-                      Remove Key
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div className="relative mb-3">
-                    <input
-                      data-testid="api-key-input"
-                      type={showApiKey ? "text" : "password"}
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="Enter your Azure AI API key..."
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono pr-12 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                    />
-                    <button
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showApiKey ? (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                        </svg>
-                      ) : (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                  <button
-                    data-testid="save-api-key-btn"
-                    onClick={saveApiKey}
-                    disabled={!apiKey.trim() || saving}
-                    className="w-full py-3 bg-orange-500 text-white font-chivo font-bold text-sm uppercase tracking-wide rounded-xl disabled:opacity-40 active:scale-95 transition-all"
-                  >
-                    {saving ? "Saving..." : "Save API Key"}
-                  </button>
-                </div>
-              )}
+              <div>
+                <button
+                  onClick={testApiKey}
+                  disabled={saving}
+                  className="w-full py-3 bg-gray-900 text-white font-chivo font-bold text-sm uppercase tracking-wide rounded-xl hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50"
+                 >
+                   {saving ? "Pinging Azure Servers..." : "Test AI Model Connection"}
+                 </button>
+               </div>
             </div>
           </div>
         )}
