@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import api from "../utils/api";
+import ForgeHeader from "./ForgeHeader";
 
 function HeatmapGrid({ data }) {
   const cells = [];
@@ -116,10 +117,7 @@ export default function Analytics() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <div className="bg-white border-b border-gray-100 px-6 pt-12 pb-4">
-        <h1 className="text-2xl font-black text-gray-900 font-chivo">Analytics</h1>
-        <p className="text-xs text-gray-400 font-manrope mt-0.5">Your patterns, visualized</p>
-      </div>
+      <ForgeHeader title="Analytics" subtitle="Your patterns, visualized" />
 
       <div className="px-6 pt-5 space-y-5">
         {/* Key metrics */}

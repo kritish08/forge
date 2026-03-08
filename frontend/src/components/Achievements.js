@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
 import { toast } from "sonner";
+import ForgeHeader from "./ForgeHeader";
 
 const ALL_ACHIEVEMENTS = [
   { type: "first_checkin", name: "First Flame", description: "Complete your first habit", icon: "🔥" },
@@ -54,12 +55,7 @@ export default function Achievements() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <div className="bg-white border-b border-gray-100 px-6 pt-12 pb-4">
-        <h1 className="text-2xl font-black text-gray-900 font-chivo">Achievements</h1>
-        <p className="text-xs text-gray-400 font-manrope mt-0.5">
-          {earned.length}/{ALL_ACHIEVEMENTS.length} unlocked
-        </p>
-      </div>
+      <ForgeHeader title="Achievements" subtitle={`${earned.length}/${ALL_ACHIEVEMENTS.length} unlocked`} />
 
       <div className="px-6 pt-5 space-y-5">
         {/* Level card */}

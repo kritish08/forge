@@ -133,6 +133,7 @@ class HabitUpdate(BaseModel):
 
 class CompletionCreate(BaseModel):
     habit_id: str
+    date: Optional[str] = None
 
 class MoodCreate(BaseModel):
     rating: int
@@ -145,10 +146,6 @@ class InsightRequest(BaseModel):
 class UserSettingsUpdate(BaseModel):
     mode: Optional[str] = None
     direct_mode_reason: Optional[str] = None
-    ai_provider: Optional[str] = None
-    azure_api_key: Optional[str] = None
-    azure_endpoint: Optional[str] = None
-    azure_model: Optional[str] = None
     onboarding_completed: Optional[bool] = None
     email_daily_reminder: Optional[bool] = None
     email_weekly_summary: Optional[bool] = None
@@ -339,21 +336,27 @@ async def send_welcome_email(email: str, name: str):
 
 # ── Push Notifications ──────────────────────────────────────────────────────────
 async def send_push(user: dict, title: str, body: str, url: str = "/"):
+    """Send a Web Push notification. Raises on failure so callers can surface errors."""
     sub = user.get("push_subscription")
-    if not sub or not VAPID_PRIVATE_KEY_B64:
-        return
-    try:
-        from pywebpush import webpush, WebPushException
-        private_pem = base64.b64decode(VAPID_PRIVATE_KEY_B64 + "==").decode()
-        contact_email = os.environ.get("SMTP_USER", "admin@example.com")
-        webpush(
-            subscription_info=sub,
-            data=json.dumps({"title": title, "body": body, "url": url}),
-            vapid_private_key=private_pem,
-            vapid_claims={"sub": f"mailto:{contact_email}"}
-        )
-    except Exception as e:
-        logger.error("Push notification failed: %s", e)
+    if not sub:
+        raise ValueError("No push subscription stored for this user. Please enable notifications first.")
+    if not VAPID_PRIVATE_KEY_B64:
+        raise ValueError("VAPID_PRIVATE_KEY is not configured in the server environment.")
+    if not VAPID_PUBLIC_KEY:
+        raise ValueError("VAPID_PUBLIC_KEY is not configured in the server environment.")
+
+    from pywebpush import webpush, WebPushException
+    # Correct base64 padding: add only the required number of '=' characters
+    padded = VAPID_PRIVATE_KEY_B64 + "=" * ((4 - len(VAPID_PRIVATE_KEY_B64) % 4) % 4)
+    private_key_bytes = base64.urlsafe_b64decode(padded)
+    # pywebpush accepts the raw private key as bytes or as a PEM string
+    contact_email = os.environ.get("SMTP_USER", "admin@forge.zerp.me")
+    webpush(
+        subscription_info=sub,
+        data=json.dumps({"title": title, "body": body, "url": url}),
+        vapid_private_key=private_key_bytes,
+        vapid_claims={"sub": f"mailto:{contact_email}"}
+    )
 
 
 # ── Scheduled jobs ──────────────────────────────────────────────────────────────
@@ -371,8 +374,11 @@ async def daily_reminder_job():
         if not remaining:
             continue
 
-        # Push notification
-        await send_push(user, "FORGE — Check in!", f"{len(remaining)} habit(s) remaining today 🔥")
+        # Push notification (wrapped so one failure doesn't kill the whole loop)
+        try:
+            await send_push(user, "FORGE — Check in!", f"{len(remaining)} habit(s) remaining today 🔥")
+        except Exception as e:
+            logger.warning("Push failed for user %s: %s", user_id, e)
 
         # Email
         if user.get("email_daily_reminder", True) and user.get("email"):
@@ -447,6 +453,7 @@ CRITICAL RULES:
 4. Give exactly 1-2 specific, actionable suggestions based on THEIR patterns
 5. Keep it 4-6 sentences, conversational tone
 6. NEVER give generic advice — every sentence must reference their actual data
+7. Cross-reference their completion rates with their reported moods/gratitude to find correlations
 
 Mode: {mode}
 {mode_instruction}"""
@@ -497,12 +504,20 @@ async def generate_ai_insight(user: dict, context: dict, reflection: str = "") -
     past_str = "\n".join([f"[{i.get('created_at','')[:10]}] {i.get('content','')[:200]}" for i in context.get("past_insights", [])[-3:]])
     dow = context.get("dow_patterns", {})
     time_p = context.get("time_patterns", {})
+    
+    moods = context.get("moods", [])
+    mood_str = "\n".join([f"[{m.get('date')}] Rating: {m.get('rating')}/5, Note: {m.get('note', '')}, Gratitude: {m.get('gratitude', '')}" for m in moods])
+    
+    achievements = context.get("achievements", [])
+    achv_str = ", ".join([a.get('type', '') for a in achievements])
 
     user_content = f"""HABITS:\n{habits_str or 'None yet'}
 COMPLETION RATE (14 days): {round(context.get('completion_rate', 0))}%
 STREAK: {context.get('streak', 0)} days | TOTAL CHECK-INS: {context.get('total_checkins', 0)}
 DAY PATTERNS:\n{chr(10).join([f"  {d}: {p}%" for d, p in dow.items()])}
 TIME PATTERNS: Early(<9AM):{time_p.get('early',0)}% Morning:{time_p.get('morning',0)}% Afternoon:{time_p.get('afternoon',0)}% Evening:{time_p.get('evening',0)}%
+MOODS & GRATITUDE (Last 7 days):\n{mood_str or 'No moods logged recently'}
+RECENT ACHIEVEMENTS: {achv_str or 'None recently'}
 PAST INSIGHTS:\n{past_str or 'None yet'}
 USER REFLECTION: {reflection or 'No reflection provided'}
 DIRECT MODE REASON: {user.get('direct_mode_reason', 'N/A') if mode == 'direct' else 'N/A'}
@@ -545,8 +560,6 @@ async def register(data: RegisterRequest, response: Response, background_tasks: 
         "user_id": user_id, "email": email, "name": data.name.strip(),
         "picture": data.picture, "password_hash": pwd_context.hash(data.password),
         "mode": "supportive", "direct_mode_reason": "",
-        "ai_provider": "none", "azure_api_key": "",
-        "azure_endpoint": AZURE_ENDPOINT, "azure_model": AZURE_MODEL,
         "onboarding_completed": False, "push_subscription": None,
         "email_daily_reminder": True, "email_weekly_summary": True,
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -565,7 +578,7 @@ async def register(data: RegisterRequest, response: Response, background_tasks: 
     background_tasks.add_task(send_welcome_email, email, data.name)
 
     safe = {k: v for k, v in user.items() if k not in ["password_hash"]}
-    safe["has_api_key"] = False
+    safe["ai_configured"] = bool(AZURE_API_KEY)
     return {"user": safe, "access_token": access_token}
 
 
@@ -621,14 +634,14 @@ async def refresh(request: Request, response: Response):
                         samesite="none", path="/", max_age=30 * 24 * 60 * 60)
 
     safe = {k: v for k, v in user.items() if k not in ["password_hash"]}
-    safe["has_api_key"] = bool(user.get("azure_api_key"))
+    safe["has_api_key"] = bool(AZURE_API_KEY)
     return {"user": safe, "access_token": new_access}
 
 
 @api_router.get("/auth/me")
 async def get_me(current_user=Depends(get_current_user)):
     safe = {k: v for k, v in current_user.items() if k not in ["password_hash"]}
-    safe["has_api_key"] = bool(current_user.get("azure_api_key"))
+    safe["has_api_key"] = bool(AZURE_API_KEY)
     return safe
 
 
@@ -730,6 +743,14 @@ async def reset_password(data: PasswordReset, request: Request):
 async def get_vapid_key():
     return {"public_key": VAPID_PUBLIC_KEY}
 
+@api_router.get("/notifications/status")
+async def get_notification_status(current_user=Depends(get_current_user)):
+    """Returns whether the server has VAPID keys configured and whether the user is subscribed."""
+    return {
+        "vapid_configured": bool(VAPID_PRIVATE_KEY_B64 and VAPID_PUBLIC_KEY),
+        "user_subscribed": bool(current_user.get("push_subscription"))
+    }
+
 @api_router.post("/notifications/subscribe")
 async def subscribe_push(data: PushSubscribeRequest, current_user=Depends(get_current_user)):
     await db.users.update_one({"user_id": current_user["user_id"]},
@@ -738,8 +759,12 @@ async def subscribe_push(data: PushSubscribeRequest, current_user=Depends(get_cu
 
 @api_router.post("/notifications/test")
 async def test_notification(current_user=Depends(get_current_user)):
-    await send_push(current_user, "FORGE Test", "Push notifications are working! 🔥", "/")
-    return {"message": "Test notification sent"}
+    try:
+        await send_push(current_user, "FORGE Test", "Push notifications are working! 🔥", "/")
+        return {"success": True, "message": "Test notification sent!"}
+    except Exception as e:
+        logger.error("Test push failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Habit Routes ────────────────────────────────────────────────────────────────
@@ -774,17 +799,19 @@ async def delete_habit(habit_id: str, current_user=Depends(get_current_user)):
 
 # ── Completion Routes ───────────────────────────────────────────────────────────
 @api_router.get("/completions")
-async def get_completions(date: Optional[str] = None, current_user=Depends(get_current_user)):
+async def get_completions(date: Optional[str] = None, habit_id: Optional[str] = None, current_user=Depends(get_current_user)):
     q = {"user_id": current_user["user_id"]}
     if date:
         q["date"] = date
+    if habit_id:
+        q["habit_id"] = habit_id
     return await db.completions.find(q, {"_id": 0}).to_list(10000)
 
 @api_router.post("/completions")
 async def create_completion(data: CompletionCreate, current_user=Depends(get_current_user)):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    target_date = data.date if data.date else datetime.now(timezone.utc).strftime("%Y-%m-%d")
     existing = await db.completions.find_one(
-        {"user_id": current_user["user_id"], "habit_id": data.habit_id, "date": today}, {"_id": 0})
+        {"user_id": current_user["user_id"], "habit_id": data.habit_id, "date": target_date}, {"_id": 0})
     if existing:
         return existing
 
@@ -793,7 +820,7 @@ async def create_completion(data: CompletionCreate, current_user=Depends(get_cur
         raise HTTPException(status_code=404, detail="Habit not found")
 
     completion = {"completion_id": f"comp_{uuid.uuid4().hex[:12]}", "user_id": current_user["user_id"],
-                  "habit_id": data.habit_id, "date": today,
+                  "habit_id": data.habit_id, "date": target_date,
                   "completed_at": datetime.now(timezone.utc).isoformat(),
                   "points_earned": habit.get("priority", 1)}
     await db.completions.insert_one(completion)
@@ -932,11 +959,14 @@ async def generate_insight(data: InsightRequest, current_user=Depends(get_curren
     user_id = current_user["user_id"]
     today = datetime.now(timezone.utc)
     start_14 = (today - timedelta(days=14)).strftime("%Y-%m-%d")
+    start_7 = (today - timedelta(days=7)).strftime("%Y-%m-%d")
 
     comps = await db.completions.find({"user_id": user_id, "date": {"$gte": start_14}}, {"_id": 0}).to_list(10000)
     all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
     habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
     past = await db.ai_insights.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(5)
+    moods = await db.moods.find({"user_id": user_id, "date": {"$gte": start_7}}, {"_id": 0}).sort("date", -1).to_list(7)
+    achievements = await db.achievements.find({"user_id": user_id}, {"_id": 0}).sort("earned_at", -1).to_list(5)
 
     n_habits = max(len(habits), 1)
     rate = len(comps) / (n_habits * 14) * 100 if habits else 0
@@ -953,7 +983,8 @@ async def generate_insight(data: InsightRequest, current_user=Depends(get_curren
     context = {"habits": habits, "completion_rate": rate, "total_checkins": len(all_comps),
                "days_using": days_using, "streak": streak,
                "dow_patterns": compute_dow_patterns(all_comps, habits),
-               "time_patterns": compute_time_patterns(all_comps), "past_insights": past}
+               "time_patterns": compute_time_patterns(all_comps), "past_insights": past,
+               "moods": moods, "achievements": achievements}
 
     insight_text = await generate_ai_insight(current_user, context, data.reflection)
     sentences = insight_text.split(".")
@@ -983,13 +1014,11 @@ async def get_achievements(current_user=Depends(get_current_user)):
 @api_router.put("/user/settings")
 async def update_settings(data: UserSettingsUpdate, current_user=Depends(get_current_user)):
     upd = {k: v for k, v in data.model_dump().items() if v is not None}
-    if "azure_api_key" in upd and upd["azure_api_key"] and upd["azure_api_key"].strip():
-        upd["azure_api_key"] = encrypt_value(upd["azure_api_key"])
     if upd:
         await db.users.update_one({"user_id": current_user["user_id"]}, {"$set": upd})
     updated = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
     safe = {k: v for k, v in updated.items() if k not in ["password_hash"]}
-    safe["has_api_key"] = bool(updated.get("azure_api_key"))
+    safe["has_api_key"] = bool(AZURE_API_KEY)
     return safe
 
 

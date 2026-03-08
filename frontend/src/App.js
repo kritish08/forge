@@ -1,6 +1,7 @@
 import "./App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import Landing from "./components/Landing";
 import Login from "./components/Login";
 import ResetPassword from "./components/ResetPassword";
 import Onboarding from "./components/Onboarding";
@@ -26,10 +27,14 @@ function AppRouter() {
     );
   }
 
-  if (!user) return <Routes>
-    <Route path="/reset-password" element={<ResetPassword />} />
-    <Route path="*" element={<Login />} />
-  </Routes>;
+  if (!user) return (
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/auth" element={<Login />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
   if (!user.onboarding_completed) return <Routes><Route path="*" element={<Onboarding />} /></Routes>;
 
   return (

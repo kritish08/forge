@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import api from "../utils/api";
 import { Input } from "./ui/input";
@@ -7,7 +8,9 @@ import { Button } from "./ui/button";
 
 export default function Login() {
   const { setUser } = useAuth();
-  const [isRegistering, setIsRegistering] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [isRegistering, setIsRegistering] = useState(location.state?.isRegistering || false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -35,13 +38,13 @@ export default function Login() {
           : { email: formData.email.trim(), password: formData.password };
 
         const res = await api.post(endpoint, payload);
-        
+
         // Store access token
         localStorage.setItem("access_token", res.data.access_token);
-        
+
         // Set user in context
         setUser(res.data.user);
-        
+
         toast.success(isRegistering ? "Welcome to FORGE! 🔥" : "Welcome back! 🔥");
       }
     } catch (err) {
@@ -58,10 +61,10 @@ export default function Login() {
       <div className="flex-1 flex flex-col items-center justify-center px-6 pt-16 pb-8">
         {/* Logo */}
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center gap-2 mb-4">
+          <div className="inline-flex items-center gap-2 mb-4 cursor-pointer" onClick={() => navigate("/")}>
             <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center shadow-lg shadow-orange-200">
               <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z"/>
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z" />
               </svg>
             </div>
             <h1 className="text-3xl font-black text-gray-900 font-chivo tracking-tight">FORGE</h1>
@@ -103,7 +106,7 @@ export default function Login() {
                 />
               </div>
             )}
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
               <Input
@@ -153,7 +156,7 @@ export default function Login() {
                 Forgot password?
               </button>
             )}
-            
+
             {isForgotPassword ? (
               <button
                 onClick={() => {

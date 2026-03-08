@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
 import { toast } from "sonner";
+import ForgeHeader from "./ForgeHeader";
 
 export default function Settings() {
   const { user, logout, refreshUser } = useAuth();
@@ -14,20 +15,25 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState("habits");
   const [pushSupported, setPushSupported] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [vapidConfigured, setVapidConfigured] = useState(null); // null=loading, true/false
 
   useEffect(() => {
     api.get("/habits").then((r) => setHabits(r.data)).catch(console.error);
-    
+
     // Check push notification support
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       setPushSupported(true);
-      // Check if already subscribed
       navigator.serviceWorker.ready.then(reg => {
         reg.pushManager.getSubscription().then(sub => {
           setPushSubscribed(!!sub);
         });
       });
     }
+
+    // Check server VAPID key config
+    api.get("/notifications/status").then(r => {
+      setVapidConfigured(r.data.vapid_configured);
+    }).catch(() => setVapidConfigured(false));
   }, []);
 
   const addHabit = async () => {
@@ -123,7 +129,7 @@ export default function Settings() {
 
       const vapidRes = await api.get("/notifications/vapid-key");
       const publicKey = vapidRes.data.public_key;
-      
+
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
@@ -156,9 +162,10 @@ export default function Settings() {
   const testPush = async () => {
     try {
       await api.post("/notifications/test");
-      toast.success("Test notification sent!");
-    } catch {
-      toast.error("Failed to send test notification");
+      toast.success("Test notification sent! Check your device 🔔");
+    } catch (err) {
+      const msg = err.response?.data?.detail || "Failed to send test notification";
+      toast.error("Push failed: " + msg);
     }
   };
 
@@ -187,9 +194,7 @@ export default function Settings() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-6 pt-12 pb-4">
-        <h1 className="text-2xl font-black text-gray-900 font-chivo">Settings</h1>
-      </div>
+      <ForgeHeader title="Settings" />
 
       {/* Profile */}
       <div className="px-6 pt-5">
@@ -217,9 +222,8 @@ export default function Settings() {
               key={tab.id}
               data-testid={`settings-tab-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-bold font-chivo transition-all ${
-                activeTab === tab.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
-              }`}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-bold font-chivo transition-all ${activeTab === tab.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
+                }`}
             >
               {tab.label}
             </button>
@@ -357,6 +361,15 @@ export default function Settings() {
                 Get instant alerts when it's time to check in on your habits
               </p>
 
+              {/* Server VAPID config warning */}
+              {vapidConfigured === false && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+                  <p className="text-xs text-red-700 font-manrope font-medium">
+                    ⚠️ <strong>Server not configured:</strong> VAPID keys are missing from the server environment. Push notifications cannot work until <code>VAPID_PRIVATE_KEY</code> and <code>VAPID_PUBLIC_KEY</code> are added to <code>backend/.env</code>.
+                  </p>
+                </div>
+              )}
+
               {!pushSupported ? (
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
                   <p className="text-sm text-gray-600 font-manrope">
@@ -394,6 +407,7 @@ export default function Settings() {
                   Enable Push Notifications
                 </button>
               )}
+
             </div>
 
             {/* Email Notifications */}
@@ -412,14 +426,12 @@ export default function Settings() {
                   </div>
                   <button
                     onClick={() => toggleEmailNotifications('email_daily_reminder')}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      user?.email_daily_reminder ? 'bg-orange-500' : 'bg-gray-300'
-                    }`}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user?.email_daily_reminder ? 'bg-orange-500' : 'bg-gray-300'
+                      }`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        user?.email_daily_reminder ? 'translate-x-6' : 'translate-x-1'
-                      }`}
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${user?.email_daily_reminder ? 'translate-x-6' : 'translate-x-1'
+                        }`}
                     />
                   </button>
                 </div>
@@ -432,14 +444,12 @@ export default function Settings() {
                   </div>
                   <button
                     onClick={() => toggleEmailNotifications('email_weekly_summary')}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      user?.email_weekly_summary ? 'bg-orange-500' : 'bg-gray-300'
-                    }`}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user?.email_weekly_summary ? 'bg-orange-500' : 'bg-gray-300'
+                      }`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        user?.email_weekly_summary ? 'translate-x-6' : 'translate-x-1'
-                      }`}
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${user?.email_weekly_summary ? 'translate-x-6' : 'translate-x-1'
+                        }`}
                     />
                   </button>
                 </div>
@@ -477,10 +487,10 @@ export default function Settings() {
                   onClick={testApiKey}
                   disabled={saving}
                   className="w-full py-3 bg-gray-900 text-white font-chivo font-bold text-sm uppercase tracking-wide rounded-xl hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50"
-                 >
-                   {saving ? "Pinging Azure Servers..." : "Test AI Model Connection"}
-                 </button>
-               </div>
+                >
+                  {saving ? "Pinging Azure Servers..." : "Test AI Model Connection"}
+                </button>
+              </div>
             </div>
           </div>
         )}

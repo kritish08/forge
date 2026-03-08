@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
 import { toast } from "sonner";
+import HabitDetailModal from "./HabitDetailModal";
 
 const MOOD_OPTIONS = [
   { rating: 1, emoji: "😢", label: "Rough" },
@@ -54,6 +55,7 @@ export default function Dashboard() {
   const [todayMood, setTodayMood] = useState(null);
   const [showMoodForm, setShowMoodForm] = useState(false);
   const [moodRating, setMoodRating] = useState(null);
+  const [selectedHabit, setSelectedHabit] = useState(null);
   const [gratitude, setGratitude] = useState("");
   const [stats, setStats] = useState({ streak: 0, today_points: 0, max_today_points: 0, level: 1, habits_today: 0, habits_total: 0 });
   const [wellnessWarning, setWellnessWarning] = useState(null);
@@ -61,7 +63,7 @@ export default function Dashboard() {
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
-  const loadData = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
       const todayStr = new Date().toISOString().split("T")[0];
       const [habitsRes, completionsRes, statsRes, moodRes] = await Promise.all([
@@ -85,7 +87,7 @@ export default function Dashboard() {
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const toggleHabit = async (habit) => {
     const isCompleted = !!completions[habit.habit_id];
@@ -153,9 +155,21 @@ export default function Dashboard() {
                 : `Hey, ${user?.name?.split(" ")[0] || "Champion"}`}
             </h1>
           </div>
-          {user?.picture && (
-            <img src={user.picture} alt="avatar" className="w-10 h-10 rounded-full border-2 border-orange-200" />
-          )}
+          {/* Top-right: FORGE logo + optional avatar */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* FORGE brand mark */}
+            <div className="flex items-center gap-1.5">
+              <div className="w-7 h-7 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center shadow-sm shadow-orange-200">
+                <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z" />
+                </svg>
+              </div>
+              <span className="text-sm font-black text-gray-900 font-chivo tracking-tight">FORGE</span>
+            </div>
+            {user?.picture && (
+              <img src={user.picture} alt="avatar" className="w-9 h-9 rounded-full border-2 border-orange-200" />
+            )}
+          </div>
         </div>
 
         {/* Stats row */}
@@ -220,20 +234,23 @@ export default function Dashboard() {
               <button
                 key={habit.habit_id}
                 data-testid={`habit-toggle-${habit.habit_id}`}
-                onClick={() => toggleHabit(habit)}
-                className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all duration-300 ${
+                onClick={() => setSelectedHabit(habit)}
+                className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all duration-300 active:scale-[0.98] ${
                   done
                     ? "bg-orange-50 border-orange-300 shadow-sm"
-                    : "bg-white border-gray-100 hover:border-orange-200 hover:shadow-sm"
-                } ${isAnimating ? "scale-[0.97]" : "scale-100"}`}
+                    : "bg-white border-gray-100 hover:border-orange-200 hover:shadow-md shadow-sm"
+                  } ${isAnimating ? "scale-[0.97]" : "scale-100"}`}
               >
-                {/* Check button */}
+                {/* Check button (Click to toggle today's completion) */}
                 <div
-                  className={`w-10 h-10 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-300 ${
-                    done
-                      ? "bg-orange-500 border-orange-500 shadow-lg shadow-orange-200"
-                      : "border-gray-200 bg-white"
-                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleHabit(habit);
+                  }}
+                  className={`w-10 h-10 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-300 ${done
+                    ? "bg-orange-500 border-orange-500 shadow-lg shadow-orange-200 hover:bg-orange-600"
+                    : "border-gray-200 bg-white hover:border-orange-300"
+                    }`}
                 >
                   {done && (
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -252,16 +269,19 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* Priority */}
-                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                {/* Right side: priority + calendar cue */}
+                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                   <div className="flex gap-0.5">
                     {[1, 2, 3].map((s) => (
                       <span key={s} className={`text-xs ${s <= habit.priority ? "text-orange-500" : "text-gray-200"}`}>★</span>
                     ))}
                   </div>
-                  <span className={`text-xs font-bold font-chivo ${done ? "text-orange-500" : "text-gray-400"}`}>
-                    {done ? `+${habit.priority}pt` : `${habit.priority}pt`}
-                  </span>
+                  <div className="flex items-center gap-1.5 bg-orange-100 text-orange-600 px-2.5 py-1 rounded-full">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-[11px] font-bold font-chivo">History</span>
+                  </div>
                 </div>
               </button>
             );
@@ -307,9 +327,8 @@ export default function Dashboard() {
                   <button
                     key={m.rating}
                     onClick={() => setMoodRating(m.rating)}
-                    className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all active:scale-95 ${
-                      moodRating === m.rating ? "bg-orange-50 ring-2 ring-orange-300" : ""
-                    }`}
+                    className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all active:scale-95 ${moodRating === m.rating ? "bg-orange-50 ring-2 ring-orange-300" : ""
+                      }`}
                   >
                     <span className="text-2xl">{m.emoji}</span>
                   </button>
@@ -356,6 +375,16 @@ export default function Dashboard() {
       {/* Wellness warning modal */}
       {wellnessWarning && (
         <WellnessModal warning={wellnessWarning} onClose={() => setWellnessWarning(null)} />
+      )}
+
+      {/* Habit Detail Modal */}
+      {selectedHabit && (
+        <HabitDetailModal
+          habit={selectedHabit}
+          isOpen={!!selectedHabit}
+          onClose={() => setSelectedHabit(null)}
+          onUpdate={fetchData}
+        />
       )}
     </div>
   );

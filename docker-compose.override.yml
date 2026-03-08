@@ -1,0 +1,16 @@
+services:
+  backend:
+    ports:
+      - "8005:8001"
+    environment:
+      - CORS_ORIGINS=http://localhost:3005,http://127.0.0.1:3005
+
+  frontend:
+    ports:
+      - "3005:80"
+
+networks:
+  # Override the external requirement so it just creates a local bridge
+  n8n-singh_default:
+    external: false
+    driver: bridge

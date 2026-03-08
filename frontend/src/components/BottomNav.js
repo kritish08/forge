@@ -61,9 +61,10 @@ export default function BottomNav() {
   return (
     <nav
       data-testid="bottom-nav"
-      className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-gray-100 z-50 pb-safe"
+      className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-gray-100 z-50"
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      <div className="flex max-w-lg mx-auto">
+      <div className="flex w-full max-w-screen-sm mx-auto sm:max-w-none">
         {NAV_ITEMS.map((item) => {
           const active = location.pathname === item.path;
           return (

@@ -13,12 +13,13 @@ services:
       - CORS_ORIGINS=https://${DOMAIN_NAME},https://www.${DOMAIN_NAME}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.forge-api.rule=Host(`api-forge.zerp.me`)"
+      - 'traefik.http.routers.forge-api.rule=Host(`api-${DOMAIN_NAME}`)'
       - "traefik.http.routers.forge-api.entrypoints=websecure"
-      - "traefik.http.routers.forge-api.tls=true"
+      - "traefik.http.routers.forge-api.tls.certresolver=mytlschallenge"
       - "traefik.http.services.forge-api.loadbalancer.server.port=8001"
+      - "traefik.docker.network=n8n-singh_default"
     networks:
-      - n8n-singh_default
+      - traefik_net
     command: uvicorn server:app --host 0.0.0.0 --port 8001
 
   # React Frontend (Nginx Production Build)
@@ -32,14 +33,15 @@ services:
       - ./frontend/.env
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.forge-web.rule=Host(`${DOMAIN_NAME}`) || Host(`www.${DOMAIN_NAME}`)"
+      - 'traefik.http.routers.forge-web.rule=Host(`${DOMAIN_NAME}`) || Host(`www.${DOMAIN_NAME}`)'
       - "traefik.http.routers.forge-web.entrypoints=websecure"
-      - "traefik.http.routers.forge-web.tls=true"
+      - "traefik.http.routers.forge-web.tls.certresolver=mytlschallenge"
       - "traefik.http.services.forge-web.loadbalancer.server.port=80"
+      - "traefik.docker.network=n8n-singh_default"
     depends_on:
       - backend
     networks:
-      - n8n-singh_default
+      - traefik_net
 
   # Automated Daily AWS S3 MongoDB Backups
   backup:
@@ -54,7 +56,6 @@ services:
       - ./backend/.env
 
 networks:
-  # This connects to the 'default' network created by your n8n docker-compose file.
-  # The prefix 'n8n-singh_' is generated because your n8n compose file is in the 'n8n-singh' folder.
-  n8n-singh_default:
+  traefik_net:
+    name: n8n-singh_default
     external: true
