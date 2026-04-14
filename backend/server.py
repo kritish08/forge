@@ -29,6 +29,9 @@ ALGORITHM = "HS256"
 VAPID_PRIVATE_KEY_B64 = os.environ.get("VAPID_PRIVATE_KEY", "")
 VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
 
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_USER = os.environ.get("SMTP_USER", "")
+
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
@@ -45,12 +48,54 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 limiter = Limiter(key_func=get_remote_address)
 scheduler = AsyncIOScheduler(timezone="UTC")
 
-app = FastAPI()
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-api_router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+# Enhanced CORS Logic (Supports Local & Production simultaneously)
+DOMAIN_NAME = os.environ.get("DOMAIN_NAME", "forge.zerp.me")
+CORS_ORIGINS_RAW = os.environ.get("CORS_ORIGINS", "")
+
+# Always allow the root production domains to prevent the override bug
+CORS_ORIGINS = [f"https://{DOMAIN_NAME}", f"https://www.{DOMAIN_NAME}", f"https://api-{DOMAIN_NAME}"]
+
+# Append any custom domains passed through the environment (e.g. localhost for local testing)
+if CORS_ORIGINS_RAW:
+    for o in CORS_ORIGINS_RAW.split(","):
+        o = o.strip()
+        if o and o not in CORS_ORIGINS:
+            CORS_ORIGINS.append(o)
+
+logger.info(f"Active CORS Origins: {CORS_ORIGINS}")
+
+app = FastAPI()
+api_router = APIRouter(prefix="/api")
+
+# ── Early CORS & Debug Middleware ─────────────────────────────────────────────
+# Credentials cannot be used with "*"
+if "*" in CORS_ORIGINS and len(CORS_ORIGINS) == 1:
+    logger.warning("CORS_ORIGINS is set to '*' but allow_credentials=True. This can cause 400 errors in preflight.")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.middleware("http")
+async def debug_preflight(request: Request, call_next):
+    if request.method == "OPTIONS":
+        origin = request.headers.get("origin")
+        logger.info(f"OPTIONS: {request.url.path} | Origin: {origin}")
+    
+    response = await call_next(request)
+    if response.status_code == 400 and request.method == "OPTIONS":
+        logger.error(f"CORS REJECTED: {request.headers.get('origin')} not in {CORS_ORIGINS}")
+    return response
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # ── Encryption ─────────────────────────────────────────────────────────────────
@@ -152,6 +197,9 @@ class UserSettingsUpdate(BaseModel):
 
 class PushSubscribeRequest(BaseModel):
     subscription: dict
+
+class DeleteAccountRequest(BaseModel):
+    password: str
 
 
 # ── Gamification ────────────────────────────────────────────────────────────────
@@ -285,13 +333,11 @@ def compute_time_patterns(completions: list) -> dict:
 
 # ── Email helpers ───────────────────────────────────────────────────────────────
 async def send_email(to: str, subject: str, html_body: str):
-    smtp_host = os.environ.get("SMTP_HOST", "")
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
-    smtp_user = os.environ.get("SMTP_USER", "")
     smtp_pass = os.environ.get("SMTP_PASS", "")
-    smtp_from = os.environ.get("SMTP_FROM", f"FORGE <{smtp_user}>")
+    smtp_from = os.environ.get("SMTP_FROM", f"FORGE <{SMTP_USER}>")
 
-    if not smtp_host or not smtp_user:
+    if not SMTP_HOST or not SMTP_USER:
         logger.info("SMTP not configured, skipping email to %s", to)
         return
 
@@ -304,8 +350,8 @@ async def send_email(to: str, subject: str, html_body: str):
         msg["From"] = smtp_from
         msg["To"] = to
         msg.attach(MIMEText(html_body, "html"))
-        await aiosmtplib.send(msg, hostname=smtp_host, port=smtp_port,
-                              username=smtp_user, password=smtp_pass, start_tls=True)
+        await aiosmtplib.send(msg, hostname=SMTP_HOST, port=smtp_port,
+                              username=SMTP_USER, password=smtp_pass, start_tls=True)
         logger.info("Email sent to %s: %s", to, subject)
     except Exception as e:
         logger.error("Email send failed: %s", e)
@@ -346,15 +392,28 @@ async def send_push(user: dict, title: str, body: str, url: str = "/"):
         raise ValueError("VAPID_PUBLIC_KEY is not configured in the server environment.")
 
     from pywebpush import webpush, WebPushException
-    # Correct base64 padding: add only the required number of '=' characters
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.backends import default_backend
+    import base64
+    
     padded = VAPID_PRIVATE_KEY_B64 + "=" * ((4 - len(VAPID_PRIVATE_KEY_B64) % 4) % 4)
-    private_key_bytes = base64.urlsafe_b64decode(padded)
-    # pywebpush accepts the raw private key as bytes or as a PEM string
-    contact_email = os.environ.get("SMTP_USER", "admin@forge.zerp.me")
+    raw_key = base64.urlsafe_b64decode(padded)
+    private_value = int.from_bytes(raw_key, 'big')
+
+    contact_email = f"admin@{DOMAIN_NAME}"
+    
+    from py_vapid import Vapid
+    vapid_instance = Vapid()
+    # Ensure claims are set directly on the instance AND passed to webpush
+    # to handle different versions of the library's internal signature logic.
+    vapid_instance.claims = {"sub": f"mailto:{contact_email}"}
+    vapid_instance.private_key = ec.derive_private_key(private_value, ec.SECP256R1(), default_backend())
+
     webpush(
         subscription_info=sub,
         data=json.dumps({"title": title, "body": body, "url": url}),
-        vapid_private_key=private_key_bytes,
+        vapid_private_key=vapid_instance,
         vapid_claims={"sub": f"mailto:{contact_email}"}
     )
 
@@ -385,6 +444,10 @@ async def daily_reminder_job():
             items = "".join([f"<li style='margin:4px 0'>{h['name']}</li>" for h in remaining[:5]])
             all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
             streak = compute_streak(all_comps, today)
+            
+            unsub_token = create_token(user_id, "unsubscribe", 60 * 24 * 365) # 1 year validity
+            unsub_link = f"{APP_URL}/api/notifications/unsubscribe?token={unsub_token}&type=daily"
+            
             html = f"""
             <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px">
               <h2 style="color:#F97316">🔥 Daily Check-in — Keep the streak alive!</h2>
@@ -393,7 +456,8 @@ async def daily_reminder_job():
               <p style="color:#374151"><strong>Current streak:</strong> {streak} days</p>
               <a href="{APP_URL}" style="display:inline-block;background:#F97316;color:white;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:bold;margin-top:16px">Open FORGE →</a>
               <p style="color:#9CA3AF;font-size:11px;margin-top:32px">
-                <a href="{APP_URL}/settings" style="color:#F97316">Manage notification preferences</a>
+                <a href="{unsub_link}" style="color:#9CA3AF;text-decoration:underline">Unsubscribe from daily reminders</a> |
+                <a href="{APP_URL}/settings" style="color:#F97316">Manage all settings</a>
               </p>
             </div>"""
             await send_email(user["email"], "🔥 FORGE: Complete your habits today", html)
@@ -419,6 +483,10 @@ async def weekly_summary_job():
         lvl = get_level(total_pts)
 
         color = "#22C55E" if rate >= 75 else ("#F59E0B" if rate >= 50 else "#EF4444")
+        
+        unsub_token = create_token(user_id, "unsubscribe", 60 * 24 * 365) # 1 year validity
+        unsub_link = f"{APP_URL}/api/notifications/unsubscribe?token={unsub_token}&type=weekly"
+        
         html = f"""
         <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px">
           <h2 style="color:#F97316">🔥 Your FORGE Week in Review</h2>
@@ -437,7 +505,8 @@ async def weekly_summary_job():
           </div>
           <a href="{APP_URL}/analytics" style="display:inline-block;background:#F97316;color:white;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:bold">View Full Analytics →</a>
           <p style="color:#9CA3AF;font-size:11px;margin-top:32px">
-            <a href="{APP_URL}/settings" style="color:#F97316">Manage notification preferences</a>
+            <a href="{unsub_link}" style="color:#9CA3AF;text-decoration:underline">Unsubscribe from weekly summaries</a> |
+            <a href="{APP_URL}/settings" style="color:#F97316">Manage all settings</a>
           </p>
         </div>"""
         await send_email(user["email"], f"🔥 FORGE Weekly: {rate}% consistency this week", html)
@@ -745,9 +814,10 @@ async def get_vapid_key():
 
 @api_router.get("/notifications/status")
 async def get_notification_status(current_user=Depends(get_current_user)):
-    """Returns whether the server has VAPID keys configured and whether the user is subscribed."""
+    """Returns whether the server has VAPID and SMTP keys configured."""
     return {
         "vapid_configured": bool(VAPID_PRIVATE_KEY_B64 and VAPID_PUBLIC_KEY),
+        "smtp_configured": bool(SMTP_HOST and SMTP_USER),
         "user_subscribed": bool(current_user.get("push_subscription"))
     }
 
@@ -766,6 +836,31 @@ async def test_notification(current_user=Depends(get_current_user)):
         logger.error("Test push failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
+from fastapi.responses import HTMLResponse
+
+@api_router.get("/notifications/unsubscribe")
+async def unsubscribe_email(token: str, type: str):
+    user_id = decode_token(token)
+    if not user_id:
+         return HTMLResponse("<h1>Invalid or expired link.</h1>", status_code=400)
+    
+    if type == "daily":
+        await db.users.update_one({"user_id": user_id}, {"$set": {"email_daily_reminder": False}})
+        msg = "You have successfully unsubscribed from Daily Reminders."
+    elif type == "weekly":
+        await db.users.update_one({"user_id": user_id}, {"$set": {"email_weekly_summary": False}})
+        msg = "You have successfully unsubscribed from Weekly Summaries."
+    else:
+        return HTMLResponse("<h1>Invalid type.</h1>", status_code=400)
+    
+    html = f"""
+    <div style="font-family: sans-serif; max-width: 500px; margin: 40px auto; text-align: center; background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+        <h2 style="color: #F97316; margin-bottom: 24px;">FORGE</h2>
+        <p style="color: #374151; font-size: 16px;">{msg}</p>
+        <p style="margin-top: 32px;"><a href="{APP_URL}/settings" style="color: #F97316; font-weight: bold; text-decoration: none;">Manage your notification settings here →</a></p>
+    </div>
+    """
+    return HTMLResponse(html)
 
 # ── Habit Routes ────────────────────────────────────────────────────────────────
 @api_router.get("/habits")
@@ -1022,6 +1117,33 @@ async def update_settings(data: UserSettingsUpdate, current_user=Depends(get_cur
     return safe
 
 
+@api_router.delete("/user/account")
+async def delete_account(data: DeleteAccountRequest, current_user=Depends(get_current_user), response: Response = None):
+    user_id = current_user["user_id"]
+    
+    # 1. Verify password
+    if not pwd_context.verify(data.password, current_user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    
+    # 2. Delete all user data across collections
+    await db.habits.delete_many({"user_id": user_id})
+    await db.completions.delete_many({"user_id": user_id})
+    await db.moods.delete_many({"user_id": user_id})
+    await db.achievements.delete_many({"user_id": user_id})
+    await db.ai_insights.delete_many({"user_id": user_id})
+    await db.password_resets.delete_many({"user_id": user_id})
+    await db.refresh_tokens.delete_many({"user_id": user_id})
+    
+    # 3. Delete user account itself
+    await db.users.delete_one({"user_id": user_id})
+    
+    # 4. Clear cookies if response object is injected
+    if response:
+        response.delete_cookie("refresh_token", path="/", samesite="none", secure=True)
+        response.delete_cookie("access_token", path="/", samesite="none", secure=True)
+        
+    return {"message": "Account successfully deleted"}
+
 @api_router.post("/user/test-ai-key")
 async def test_ai_key(current_user=Depends(get_current_user)):
     """Test if the user's Azure AI API key is working"""
@@ -1063,13 +1185,7 @@ async def test_ai_key(current_user=Depends(get_current_user)):
 
 
 app.include_router(api_router)
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Middleware moved to top
 
 
 @app.on_event("startup")

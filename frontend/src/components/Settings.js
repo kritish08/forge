@@ -12,10 +12,13 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
   const [activeTab, setActiveTab] = useState("habits");
   const [pushSupported, setPushSupported] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [vapidConfigured, setVapidConfigured] = useState(null); // null=loading, true/false
+  const [smtpConfigured, setSmtpConfigured] = useState(null); // null=loading, true/false
 
   useEffect(() => {
     api.get("/habits").then((r) => setHabits(r.data)).catch(console.error);
@@ -30,10 +33,14 @@ export default function Settings() {
       });
     }
 
-    // Check server VAPID key config
+    // Check server VAPID key and SMTP config
     api.get("/notifications/status").then(r => {
       setVapidConfigured(r.data.vapid_configured);
-    }).catch(() => setVapidConfigured(false));
+      setSmtpConfigured(r.data.smtp_configured);
+    }).catch(() => {
+      setVapidConfigured(false);
+      setSmtpConfigured(false);
+    });
   }, []);
 
   const addHabit = async () => {
@@ -140,8 +147,8 @@ export default function Settings() {
       setPushSubscribed(true);
       toast.success("Push notifications enabled! 🔔");
     } catch (err) {
-      console.error(err);
-      toast.error("Failed to enable push notifications");
+      console.error("Push Sub Error:", err);
+      toast.error("Failed to enable push: " + (err.message || "Unknown error"));
     }
   };
 
@@ -176,6 +183,26 @@ export default function Settings() {
       toast.success("Email preferences updated");
     } catch {
       toast.error("Failed to update preferences");
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (!deletePassword) {
+      toast.error("Please enter your password to confirm.");
+      return;
+    }
+    if (!window.confirm("WARNING: This will permanently delete your account and ALL your data. This action CANNOT be undone. Are you absolutely sure?")) return;
+    
+    setDeleting(true);
+    try {
+      await api.delete("/user/account", { data: { password: deletePassword } });
+      toast.success("Account permanently deleted.");
+      localStorage.removeItem("access_token");
+      window.location.href = "/";
+    } catch (err) {
+      const msg = err.response?.data?.detail || "Failed to delete account. Please check your password.";
+      toast.error(msg);
+      setDeleting(false);
     }
   };
 
@@ -216,13 +243,15 @@ export default function Settings() {
         </div>
 
         {/* Tabs */}
-        <div className="flex bg-gray-100 rounded-2xl p-1 mb-5 gap-1">
-          {[{ id: "habits", label: "Habits" }, { id: "notifications", label: "Notifications" }, { id: "ai", label: "AI Key" }, { id: "mode", label: "Mode" }].map((tab) => (
+        <div className="flex bg-gray-100 rounded-2xl p-1 mb-5 flex-wrap gap-1">
+          {[{ id: "habits", label: "Habits" }, { id: "notifications", label: "Notifications" }, { id: "ai", label: "AI Key" }, { id: "mode", label: "Mode" }, { id: "danger", label: "Danger" }].map((tab) => (
             <button
               key={tab.id}
               data-testid={`settings-tab-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-bold font-chivo transition-all ${activeTab === tab.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
+              className={`flex-1 min-w-[70px] py-2.5 rounded-xl text-xs sm:text-sm font-bold font-chivo transition-all ${activeTab === tab.id 
+                ? (tab.id === "danger" ? "bg-red-500 text-white shadow-sm" : "bg-white text-gray-900 shadow-sm") 
+                : "text-gray-500 hover:bg-gray-200"
                 }`}
             >
               {tab.label}
@@ -455,7 +484,7 @@ export default function Settings() {
                 </div>
               </div>
 
-              {(!process.env.REACT_APP_SMTP_HOST || process.env.REACT_APP_SMTP_HOST === '') && (
+              {smtpConfigured === false && (
                 <div className="mt-4 bg-yellow-50 border border-yellow-100 rounded-xl p-3">
                   <p className="text-xs text-yellow-700 font-manrope">
                     ⚠️ SMTP not configured. Email notifications won't be sent until SMTP settings are added to backend/.env
@@ -512,6 +541,38 @@ export default function Settings() {
                 <p className="text-sm text-red-600 font-manrope">"{user.direct_mode_reason}"</p>
               </div>
             )}
+          </div>
+        )}
+        {/* Danger Zone tab */}
+        {activeTab === "danger" && (
+          <div className="bg-white rounded-2xl border border-red-200 p-5">
+            <h3 className="font-bold font-chivo text-red-600 mb-1">Danger Zone</h3>
+            <p className="text-sm text-gray-600 font-manrope leading-relaxed mb-4">
+              Permanently delete your account and all associated data (habits, check-ins, moods, achievements, insights). 
+              <strong className="block mt-1">This action cannot be undone.</strong>
+            </p>
+            
+            <div className="space-y-4 pt-4 border-t border-red-100">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 font-manrope mb-2">
+                  Confirm Password to Delete Account:
+                </label>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className="w-full bg-gray-50 border border-red-200 rounded-xl px-4 py-3 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-red-400"
+                />
+              </div>
+              <button
+                onClick={deleteAccount}
+                disabled={!deletePassword || deleting}
+                className="w-full py-3 bg-red-600 text-white font-chivo font-bold text-sm uppercase tracking-wide rounded-xl hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50"
+              >
+                {deleting ? "Deleting..." : "Permanently Delete Account"}
+              </button>
+            </div>
           </div>
         )}
       </div>
