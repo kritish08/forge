@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
 import { toast } from "sonner";
+import { FrequencyPicker, FrequencyBadge } from "./FrequencyPicker";
 
 const MODES = [
   {
@@ -37,15 +38,19 @@ export default function Onboarding() {
   const { setUser } = useAuth();
   const [step, setStep] = useState(1);
   const [habits, setHabits] = useState([]);
-  const [newHabit, setNewHabit] = useState({ name: "", priority: 1, context: "" });
+  const [newHabit, setNewHabit] = useState({ name: "", priority: 1, context: "", frequency_type: "daily", frequency_days: [], frequency_target: 7 });
   const [mode, setMode] = useState("supportive");
   const [directReason, setDirectReason] = useState("");
   const [loading, setLoading] = useState(false);
 
   const addHabit = () => {
     if (!newHabit.name.trim()) return;
+    if (newHabit.frequency_type === "specific_days" && newHabit.frequency_days.length === 0) {
+      toast.error("Select at least one day.");
+      return;
+    }
     setHabits([...habits, { ...newHabit, id: Date.now() }]);
-    setNewHabit({ name: "", priority: 1, context: "" });
+    setNewHabit({ name: "", priority: 1, context: "", frequency_type: "daily", frequency_days: [], frequency_target: 7 });
   };
 
   const removeHabit = (id) => setHabits(habits.filter((h) => h.id !== id));
@@ -59,7 +64,10 @@ export default function Onboarding() {
     try {
       // Create habits
       for (const h of habits) {
-        await api.post("/habits", { name: h.name, priority: h.priority, context: h.context });
+        await api.post("/habits", {
+          name: h.name, priority: h.priority, context: h.context,
+          frequency_type: h.frequency_type, frequency_days: h.frequency_days, frequency_target: h.frequency_target
+        });
       }
       // Update user settings
       const res = await api.put("/user/settings", {
@@ -149,7 +157,10 @@ export default function Onboarding() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-800 font-manrope truncate">{h.name}</p>
-                  {h.context && <p className="text-xs text-gray-400 truncate">For: {h.context}</p>}
+                  <div className="flex items-center gap-2">
+                    {h.context && <p className="text-xs text-gray-400 truncate">For: {h.context}</p>}
+                    <FrequencyBadge habit={h} />
+                  </div>
                 </div>
                 <button onClick={() => removeHabit(h.id)} className="text-gray-300 hover:text-red-400 transition-colors">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -192,6 +203,13 @@ export default function Onboarding() {
                 </button>
               ))}
             </div>
+            <FrequencyPicker
+              frequencyType={newHabit.frequency_type}
+              frequencyDays={newHabit.frequency_days}
+              frequencyTarget={newHabit.frequency_target}
+              onChange={(f) => setNewHabit({ ...newHabit, ...f })}
+            />
+            <div className="mt-3" />
             <button
               data-testid="add-habit-btn"
               onClick={addHabit}

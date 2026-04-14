@@ -167,6 +167,9 @@ class HabitCreate(BaseModel):
     context: str = ""
     target_time: str = ""
     color: str = "#F97316"
+    frequency_type: str = "daily"          # "daily" | "specific_days" | "times_per_week"
+    frequency_days: list = []              # [0,1,2,3,4,5,6] — 0=Mon, 6=Sun (ISO weekday)
+    frequency_target: int = 7              # For times_per_week: how many days per week (1-7)
 
 class HabitUpdate(BaseModel):
     name: Optional[str] = None
@@ -175,6 +178,9 @@ class HabitUpdate(BaseModel):
     target_time: Optional[str] = None
     color: Optional[str] = None
     is_active: Optional[bool] = None
+    frequency_type: Optional[str] = None
+    frequency_days: Optional[list] = None
+    frequency_target: Optional[int] = None
 
 class CompletionCreate(BaseModel):
     habit_id: str
@@ -219,7 +225,23 @@ def get_level_progress(pts: int) -> dict:
     return {"level": lvl, "total_points": pts, "current_threshold": cur,
             "next_threshold": nxt, "progress_pct": round((pts - cur) / span * 100, 1)}
 
+def is_habit_scheduled_today(habit: dict, weekday: int) -> bool:
+    """Check if a habit is scheduled for a given ISO weekday (0=Mon, 6=Sun)."""
+    ft = habit.get("frequency_type", "daily")
+    if ft == "daily":
+        return True
+    if ft == "specific_days":
+        return weekday in habit.get("frequency_days", [])
+    if ft == "times_per_week":
+        return True  # Always available — user decides when
+    return True
+
+def is_day_scheduled(habit: dict, date_obj) -> bool:
+    """Check if a specific date is a scheduled day for this habit."""
+    return is_habit_scheduled_today(habit, date_obj.weekday())
+
 def compute_streak(completions: list, today_str: str) -> int:
+    """Legacy global streak: consecutive days where completions exist."""
     if not completions:
         return 0
     dates = sorted(set(c["date"] for c in completions), reverse=True)
@@ -231,6 +253,115 @@ def compute_streak(completions: list, today_str: str) -> int:
         elif d < expected:
             break
     return streak
+
+def compute_global_streak(all_completions: list, habits: list, today_str: str) -> int:
+    """Consecutive days where ALL scheduled habits were completed.
+    Days with zero scheduled habits are skipped (don't break or extend)."""
+    if not habits or not all_completions:
+        return 0
+    comp_by_date = defaultdict(set)
+    for c in all_completions:
+        comp_by_date[c["date"]].add(c["habit_id"])
+    streak = 0
+    cursor = datetime.strptime(today_str, "%Y-%m-%d")
+    for _ in range(400):  # max lookback
+        ds = cursor.strftime("%Y-%m-%d")
+        weekday = cursor.weekday()
+        scheduled = [h for h in habits if is_habit_scheduled_today(h, weekday)]
+        if not scheduled:
+            # No habits scheduled this day — skip it, don't break streak
+            cursor -= timedelta(days=1)
+            continue
+        scheduled_ids = {h["habit_id"] for h in scheduled}
+        completed_ids = comp_by_date.get(ds, set())
+        if scheduled_ids.issubset(completed_ids):
+            streak += 1
+            cursor -= timedelta(days=1)
+        else:
+            break
+    return streak
+
+def compute_habit_streak(completions: list, habit: dict, today_str: str) -> int:
+    """Per-habit streak respecting the habit's frequency type."""
+    if not completions:
+        return 0
+    ft = habit.get("frequency_type", "daily")
+    dates_set = set(c["date"] for c in completions)
+
+    if ft == "daily":
+        streak, cursor = 0, datetime.strptime(today_str, "%Y-%m-%d")
+        while cursor.strftime("%Y-%m-%d") in dates_set:
+            streak += 1
+            cursor -= timedelta(days=1)
+        return streak
+
+    if ft == "specific_days":
+        freq_days = habit.get("frequency_days", [])
+        if not freq_days:
+            return 0
+        streak, cursor = 0, datetime.strptime(today_str, "%Y-%m-%d")
+        for _ in range(400):
+            if cursor.weekday() not in freq_days:
+                cursor -= timedelta(days=1)
+                continue
+            if cursor.strftime("%Y-%m-%d") in dates_set:
+                streak += 1
+                cursor -= timedelta(days=1)
+            else:
+                break
+        return streak
+
+    if ft == "times_per_week":
+        return _compute_weekly_streak(dates_set, habit, today_str)
+
+    return 0
+
+def _compute_weekly_streak(dates_set: set, habit: dict, today_str: str) -> int:
+    """Count consecutive ISO weeks (Mon-Sun) where completions >= target."""
+    target = habit.get("frequency_target", 1)
+    today = datetime.strptime(today_str, "%Y-%m-%d")
+    # Start from the most recent COMPLETED week (last Monday)
+    current_monday = today - timedelta(days=today.weekday())
+    # Check if current (incomplete) week already meets target
+    current_week_dates = {(current_monday + timedelta(days=d)).strftime("%Y-%m-%d") for d in range(7)}
+    current_week_count = len(dates_set & current_week_dates)
+    streak = 0
+    if current_week_count >= target:
+        streak = 1
+    # Walk backward through previous complete weeks
+    for w in range(1, 53):
+        week_monday = current_monday - timedelta(weeks=w)
+        week_dates = {(week_monday + timedelta(days=d)).strftime("%Y-%m-%d") for d in range(7)}
+        if len(dates_set & week_dates) >= target:
+            streak += 1
+        else:
+            break
+    return streak
+
+def compute_habit_adherence(habit: dict, completions: list, days: int = 14) -> int:
+    """Calculate what % of scheduled days the user actually completed, over N days."""
+    ft = habit.get("frequency_type", "daily")
+    dates_set = set(c["date"] for c in completions if c["habit_id"] == habit["habit_id"])
+    today = datetime.now(timezone.utc)
+    scheduled = 0
+    completed = 0
+    for i in range(days):
+        d = today - timedelta(days=i)
+        ds = d.strftime("%Y-%m-%d")
+        if ft == "daily":
+            scheduled += 1
+            if ds in dates_set:
+                completed += 1
+        elif ft == "specific_days":
+            if d.weekday() in habit.get("frequency_days", []):
+                scheduled += 1
+                if ds in dates_set:
+                    completed += 1
+        elif ft == "times_per_week":
+            scheduled += 1  # Every day is available
+            if ds in dates_set:
+                completed += 1
+    return round(completed / max(scheduled, 1) * 100)
 
 async def check_and_award_achievements(user_id: str) -> list:
     completions = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
@@ -299,8 +430,8 @@ async def check_and_award_achievements(user_id: str) -> list:
 
 # ── Analytics helpers ───────────────────────────────────────────────────────────
 def compute_dow_patterns(completions: list, habits: list, days: int = 30) -> dict:
+    """Day-of-week patterns using SCHEDULED habits as denominator (not total)."""
     today = datetime.now(timezone.utc)
-    n_habits = max(len(habits), 1)
     by_date = defaultdict(int)
     for c in completions:
         by_date[c["date"]] += 1
@@ -308,8 +439,10 @@ def compute_dow_patterns(completions: list, habits: list, days: int = 30) -> dic
     for i in range(days):
         d = today - timedelta(days=i)
         ds = d.strftime("%Y-%m-%d")
-        dow_data[d.weekday()]["c"] += by_date.get(ds, 0)
-        dow_data[d.weekday()]["p"] += n_habits
+        weekday = d.weekday()
+        scheduled_count = sum(1 for h in habits if is_habit_scheduled_today(h, weekday))
+        dow_data[weekday]["c"] += by_date.get(ds, 0)
+        dow_data[weekday]["p"] += max(scheduled_count, 1)
     names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     return {names[k]: round(v["c"] / max(v["p"], 1) * 100, 1) for k, v in dow_data.items()}
 
@@ -421,31 +554,39 @@ async def send_push(user: dict, title: str, body: str, url: str = "/"):
 # ── Scheduled jobs ──────────────────────────────────────────────────────────────
 async def daily_reminder_job():
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_weekday = datetime.now(timezone.utc).weekday()
     users = await db.users.find({"onboarding_completed": True}, {"_id": 0}).to_list(10000)
     for user in users:
         user_id = user["user_id"]
         habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
         if not habits:
             continue
+        # Only consider habits scheduled for today
+        scheduled_habits = [h for h in habits if is_habit_scheduled_today(h, today_weekday)]
+        if not scheduled_habits:
+            continue
         today_comps = await db.completions.find({"user_id": user_id, "date": today}, {"_id": 0}).to_list(100)
         done_ids = {c["habit_id"] for c in today_comps}
-        remaining = [h for h in habits if h["habit_id"] not in done_ids]
+        remaining = [h for h in scheduled_habits if h["habit_id"] not in done_ids]
         if not remaining:
             continue
 
-        # Push notification (wrapped so one failure doesn't kill the whole loop)
-        try:
-            await send_push(user, "FORGE — Check in!", f"{len(remaining)} habit(s) remaining today 🔥")
-        except Exception as e:
-            logger.warning("Push failed for user %s: %s", user_id, e)
+        # Push notification — respect opt-in preference
+        push_enabled = user.get("push_notifications_enabled", True)
+        if push_enabled:
+            try:
+                await send_push(user, "FORGE — Check in!", f"{len(remaining)} habit(s) remaining today 🔥")
+            except Exception as e:
+                logger.warning("Push failed for user %s: %s", user_id, e)
 
-        # Email
+        # Email — respect email_daily_reminder setting
         if user.get("email_daily_reminder", True) and user.get("email"):
             items = "".join([f"<li style='margin:4px 0'>{h['name']}</li>" for h in remaining[:5]])
             all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
-            streak = compute_streak(all_comps, today)
+            all_habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
+            streak = compute_global_streak(all_comps, all_habits, today)
             
-            unsub_token = create_token(user_id, "unsubscribe", 60 * 24 * 365) # 1 year validity
+            unsub_token = create_token(user_id, "unsubscribe", 60 * 24 * 365)
             unsub_link = f"{APP_URL}/api/notifications/unsubscribe?token={unsub_token}&type=daily"
             
             html = f"""
@@ -476,9 +617,14 @@ async def weekly_summary_job():
         if not week_comps or not user.get("email"):
             continue
 
-        n_habits = max(len(habits), 1)
-        rate = round(len(week_comps) / (n_habits * 7) * 100)
-        streak = compute_streak(all_comps, today)
+        # Schedule-aware consistency rate: scheduled completions over the past 7 days
+        scheduled_possible_7 = 0
+        for i in range(7):
+            d7 = datetime.now(timezone.utc) - timedelta(days=i)
+            weekday7 = d7.weekday()
+            scheduled_possible_7 += sum(1 for h in habits if is_habit_scheduled_today(h, weekday7))
+        rate = round(len(week_comps) / max(scheduled_possible_7, 1) * 100)
+        streak = compute_global_streak(all_comps, habits, today)
         total_pts = sum(c.get("points_earned", 1) for c in all_comps)
         lvl = get_level(total_pts)
 
@@ -533,6 +679,13 @@ MODE_INSTRUCTIONS = {
     "direct": "Be brutally honest. Call out patterns. Zero tolerance for excuses. Reference their Direct Mode reason. They asked for this—don't hold back."
 }
 
+# Schedule-aware additions — APPENDED to MODE_INSTRUCTIONS at runtime, never replacing
+SCHEDULE_MODE_ADDITIONS = {
+    "supportive": "When referencing schedules: praise rest-day discipline. Frame missed days as single events, not patterns. Celebrate bonus effort on rest days.",
+    "strategic": "When referencing schedules: calculate per-day adherence rates. Identify systematic misses. Cross-reference with mood data. Recommend schedule adjustments based on data.",
+    "direct": "When referencing schedules: the schedule is THEIR contract — a death warrant they signed. Every missed scheduled day is a self-broken promise. Do not acknowledge rest days. If adherence < 50%, question their commitment. Call out avoidance patterns by specific day name. Use their Direct Mode reason against their own excuses. If they chose a lighter schedule and still can't hit it, that's worse — they lowered the bar and tripped."
+}
+
 FALLBACK = {
     "supportive": {
         "high": "You're at {pct}% over the last 2 weeks — genuinely impressive. Your {best_day} performance ({best_pct}%) shows what happens when your environment aligns. Try front-loading your hardest habit in the morning to replicate that success.",
@@ -568,8 +721,15 @@ def generate_template_insight(context: dict, mode: str = "supportive") -> str:
 
 async def generate_ai_insight(user: dict, context: dict, reflection: str = "") -> str:
     mode = user.get("mode", "supportive")
-    system_prompt = SYSTEM_PROMPT.format(mode=mode.upper(), mode_instruction=MODE_INSTRUCTIONS.get(mode, ""))
-    habits_str = "\n".join([f"- {h['name']} (P{h['priority']}, for: {h.get('context', 'N/A')})" for h in context.get("habits", [])])
+    # Combine base mode instruction with schedule-aware addition
+    base_instruction = MODE_INSTRUCTIONS.get(mode, "")
+    schedule_addition = SCHEDULE_MODE_ADDITIONS.get(mode, "")
+    combined_instruction = f"{base_instruction}\n{schedule_addition}"
+    system_prompt = SYSTEM_PROMPT.format(mode=mode.upper(), mode_instruction=combined_instruction)
+    
+    habits_list = context.get("habits", [])
+    all_comps = context.get("all_completions", [])
+    habits_str = "\n".join([f"- {h['name']} (P{h['priority']}, for: {h.get('context', 'N/A')})" for h in habits_list])
     past_str = "\n".join([f"[{i.get('created_at','')[:10]}] {i.get('content','')[:200]}" for i in context.get("past_insights", [])[-3:]])
     dow = context.get("dow_patterns", {})
     time_p = context.get("time_patterns", {})
@@ -580,7 +740,23 @@ async def generate_ai_insight(user: dict, context: dict, reflection: str = "") -
     achievements = context.get("achievements", [])
     achv_str = ", ".join([a.get('type', '') for a in achievements])
 
+    # Build per-habit schedule adherence lines
+    day_names = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+    schedule_lines = []
+    for h in habits_list:
+        ft = h.get("frequency_type", "daily")
+        if ft == "daily":
+            freq_label = "Daily"
+        elif ft == "specific_days":
+            freq_label = "/".join([day_names[d] for d in sorted(h.get("frequency_days", []))])
+        else:
+            freq_label = f"{h.get('frequency_target', 1)}x/week"
+        adherence = compute_habit_adherence(h, all_comps, 14)
+        schedule_lines.append(f"- {h['name']}: {freq_label} — Adherence: {adherence}%")
+    schedule_str = "\n".join(schedule_lines) if schedule_lines else "No schedule data"
+
     user_content = f"""HABITS:\n{habits_str or 'None yet'}
+HABIT SCHEDULES:\n{schedule_str}
 COMPLETION RATE (14 days): {round(context.get('completion_rate', 0))}%
 STREAK: {context.get('streak', 0)} days | TOTAL CHECK-INS: {context.get('total_checkins', 0)}
 DAY PATTERNS:\n{chr(10).join([f"  {d}: {p}%" for d, p in dow.items()])}
@@ -869,10 +1045,16 @@ async def get_habits(current_user=Depends(get_current_user)):
 
 @api_router.post("/habits")
 async def create_habit(data: HabitCreate, current_user=Depends(get_current_user)):
+    # Validate frequency_days values (must be 0-6)
+    freq_days = [d for d in data.frequency_days if 0 <= d <= 6]
+    freq_target = max(1, min(7, data.frequency_target))
     habit = {"habit_id": f"hab_{uuid.uuid4().hex[:12]}", "user_id": current_user["user_id"],
              "name": data.name, "priority": max(1, min(3, data.priority)),
              "context": data.context, "target_time": data.target_time,
              "color": data.color, "is_active": True,
+             "frequency_type": data.frequency_type if data.frequency_type in ("daily", "specific_days", "times_per_week") else "daily",
+             "frequency_days": freq_days,
+             "frequency_target": freq_target,
              "created_at": datetime.now(timezone.utc).isoformat()}
     await db.habits.insert_one(habit)
     habit.pop("_id", None)
@@ -969,20 +1151,36 @@ async def get_moods(days: int = 30, current_user=Depends(get_current_user)):
 async def get_stats(current_user=Depends(get_current_user)):
     user_id = current_user["user_id"]
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_weekday = datetime.now(timezone.utc).weekday()
     start_14 = (datetime.now(timezone.utc) - timedelta(days=14)).strftime("%Y-%m-%d")
 
     all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
     habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
-    today_comps = [c for c in all_comps if c["date"] == today]
+    
+    # Only count habits scheduled for today in progress calculations
+    scheduled_habits = [h for h in habits if is_habit_scheduled_today(h, today_weekday)]
+    scheduled_ids = {h["habit_id"] for h in scheduled_habits}
+    
+    today_comps = [c for c in all_comps if c["date"] == today and c["habit_id"] in scheduled_ids]
+    today_bonus = [c for c in all_comps if c["date"] == today and c["habit_id"] not in scheduled_ids]
     recent_comps = [c for c in all_comps if c["date"] >= start_14]
 
     total_pts = sum(c.get("points_earned", 1) for c in all_comps)
-    today_pts = sum(c.get("points_earned", 1) for c in today_comps)
-    max_today = sum(h.get("priority", 1) for h in habits)
-    streak = compute_streak(all_comps, today)
+    today_pts = sum(c.get("points_earned", 1) for c in today_comps) + sum(c.get("points_earned", 1) for c in today_bonus)
+    max_today = sum(h.get("priority", 1) for h in scheduled_habits)
+    
+    # Global streak: consecutive days where ALL scheduled habits were completed
+    streak = compute_global_streak(all_comps, habits, today)
+    
     lvl_data = get_level_progress(total_pts)
-    n_habits = max(len(habits), 1)
-    rate = len(recent_comps) / (n_habits * 14) * 100 if habits else 0
+    
+    # Completion rate: scheduled completions over 14 days
+    scheduled_possible = 0
+    for i in range(14):
+        d = datetime.now(timezone.utc) - timedelta(days=i)
+        weekday = d.weekday()
+        scheduled_possible += sum(1 for h in habits if is_habit_scheduled_today(h, weekday))
+    rate = len(recent_comps) / max(scheduled_possible, 1) * 100 if habits else 0
 
     try:
         created_dt = datetime.fromisoformat(current_user.get("created_at", datetime.now(timezone.utc).isoformat()).replace("Z", "+00:00"))
@@ -997,7 +1195,8 @@ async def get_stats(current_user=Depends(get_current_user)):
             "completion_rate": round(rate, 1), "total_checkins": len(all_comps),
             "level": lvl_data["level"], "level_progress_pct": lvl_data["progress_pct"],
             "next_level_threshold": lvl_data["next_threshold"],
-            "habits_today": len(today_comps), "habits_total": len(habits), "days_since_start": days_using}
+            "habits_today": len(today_comps), "habits_total": len(scheduled_habits),
+            "habits_total_all": len(habits), "days_since_start": days_using}
 
 
 @api_router.get("/analytics/heatmap")
@@ -1065,7 +1264,7 @@ async def generate_insight(data: InsightRequest, current_user=Depends(get_curren
 
     n_habits = max(len(habits), 1)
     rate = len(comps) / (n_habits * 14) * 100 if habits else 0
-    streak = compute_streak(all_comps, today.strftime("%Y-%m-%d"))
+    streak = compute_global_streak(all_comps, habits, today.strftime("%Y-%m-%d"))
 
     try:
         created_dt = datetime.fromisoformat(current_user.get("created_at", today.isoformat()).replace("Z", "+00:00"))
@@ -1075,8 +1274,8 @@ async def generate_insight(data: InsightRequest, current_user=Depends(get_curren
     except Exception:
         days_using = 0
 
-    context = {"habits": habits, "completion_rate": rate, "total_checkins": len(all_comps),
-               "days_using": days_using, "streak": streak,
+    context = {"habits": habits, "all_completions": all_comps, "completion_rate": rate,
+               "total_checkins": len(all_comps), "days_using": days_using, "streak": streak,
                "dow_patterns": compute_dow_patterns(all_comps, habits),
                "time_patterns": compute_time_patterns(all_comps), "past_insights": past,
                "moods": moods, "achievements": achievements}

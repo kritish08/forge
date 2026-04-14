@@ -1,22 +1,82 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../utils/api";
 import { toast } from "sonner";
+import { FrequencyBadge } from "./FrequencyPicker";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function toDateStr(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function calcStreak(completionSet) {
-    let streak = 0;
+function calcStreak(completionSet, habit) {
+    const ft = habit?.frequency_type || "daily";
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const cursor = new Date(today);
-    while (completionSet.has(toDateStr(cursor))) {
-        streak++;
-        cursor.setDate(cursor.getDate() - 1);
+
+    if (ft === "daily") {
+        let streak = 0;
+        const cursor = new Date(today);
+        while (completionSet.has(toDateStr(cursor))) {
+            streak++;
+            cursor.setDate(cursor.getDate() - 1);
+        }
+        return streak;
     }
-    return streak;
+
+    if (ft === "specific_days") {
+        const freqDays = habit?.frequency_days || [];
+        if (!freqDays.length) return 0;
+        let streak = 0;
+        const cursor = new Date(today);
+        for (let i = 0; i < 400; i++) {
+            // JS getDay(): 0=Sun → ISO: 0=Mon
+            const jsDay = cursor.getDay();
+            const isoDay = jsDay === 0 ? 6 : jsDay - 1;
+            if (!freqDays.includes(isoDay)) {
+                cursor.setDate(cursor.getDate() - 1);
+                continue;
+            }
+            if (completionSet.has(toDateStr(cursor))) {
+                streak++;
+                cursor.setDate(cursor.getDate() - 1);
+            } else {
+                break;
+            }
+        }
+        return streak;
+    }
+
+    if (ft === "times_per_week") {
+        const target = habit?.frequency_target || 1;
+        // Find Monday of current week
+        const dayOfWeek = today.getDay();
+        const diffToMon = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        const monday = new Date(today);
+        monday.setDate(today.getDate() - diffToMon);
+        // Check current week
+        const currentWeekDates = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date(monday); d.setDate(monday.getDate() + i);
+            return toDateStr(d);
+        });
+        const currentCount = currentWeekDates.filter(d => completionSet.has(d)).length;
+        let streak = currentCount >= target ? 1 : 0;
+        // Walk back previous weeks
+        for (let w = 1; w <= 52; w++) {
+            const wMonday = new Date(monday);
+            wMonday.setDate(monday.getDate() - w * 7);
+            const wDates = Array.from({ length: 7 }, (_, i) => {
+                const d = new Date(wMonday); d.setDate(wMonday.getDate() + i);
+                return toDateStr(d);
+            });
+            if (wDates.filter(d => completionSet.has(d)).length >= target) {
+                streak++;
+            } else {
+                break;
+            }
+        }
+        return streak;
+    }
+    return 0;
 }
 
 const PRIORITY_LABELS = { 1: "Low", 2: "Medium", 3: "High" };
@@ -36,7 +96,7 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
     const [loading, setLoading] = useState(false);
 
     // ── Derived stats ──────────────────────────────────────────────────────
-    const streak       = calcStreak(completionDates);
+    const streak       = calcStreak(completionDates, habit);
     const totalCount   = completionDates.size;
 
     const today        = new Date(); today.setHours(0,0,0,0);
@@ -121,6 +181,8 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
         const m = currentMonth.getMonth();
         const firstDOW = new Date(y, m, 1).getDay();
         const lastDay  = new Date(y, m + 1, 0).getDate();
+        const freqDays = habit?.frequency_days || [];
+        const ft = habit?.frequency_type || "daily";
         const days = [];
         for (let i = 0; i < firstDOW; i++) days.push(null);
         for (let d = 1; d <= lastDay; d++) {
@@ -130,7 +192,11 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
             const diffD   = Math.floor(diffMs / 86400000);
             const isFuture = diffD > 0;
             const isEditable = !isFuture && diffD >= -30;
-            days.push({ day: d, dateStr, isFuture, isEditable, isToday: dateStr === todayStr });
+            // Determine if this day is scheduled (for rest-day shading)
+            const jsDay = date.getDay(); // 0=Sun
+            const isoDay = jsDay === 0 ? 6 : jsDay - 1; // 0=Mon
+            const isRestDay = ft === "specific_days" && !freqDays.includes(isoDay);
+            days.push({ day: d, dateStr, isFuture, isEditable, isToday: dateStr === todayStr, isRestDay });
         }
         return days;
     };
@@ -165,6 +231,7 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
                             <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border font-chivo uppercase tracking-wide ${PRIORITY_COLORS[habit.priority] || PRIORITY_COLORS[1]}`}>
                                 {PRIORITY_LABELS[habit.priority] || "Low"} Priority
                             </span>
+                            <FrequencyBadge habit={habit} />
                         </div>
                     </div>
                     <button
@@ -188,7 +255,11 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
                             <span className="text-2xl font-black text-white font-chivo">{streak}</span>
                             <span className="text-lg">⚡</span>
                         </div>
-                        <div className="text-xs text-orange-100 font-manrope mt-0.5">Day streak</div>
+                        <div className="text-xs text-orange-100 font-manrope mt-0.5">
+                            {habit?.frequency_type === "times_per_week" ? "Week streak" :
+                             habit?.frequency_type === "specific_days" ? "Scheduled streak" :
+                             "Day streak"}
+                        </div>
                     </div>
                 </div>
 
@@ -245,6 +316,7 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
                                                     ${d.isFuture ? "text-gray-200 cursor-not-allowed" :
                                                     !editable ? "text-gray-300 cursor-not-allowed" :
                                                     done ? "bg-orange-500 text-white shadow-md shadow-orange-200 hover:bg-orange-600" :
+                                                    d.isRestDay ? "text-gray-300 bg-gray-50 cursor-pointer" :
                                                     d.isToday ? "ring-2 ring-orange-400 text-orange-600 font-bold hover:bg-orange-50" :
                                                     "text-gray-600 hover:bg-gray-100"}`}
                                             >
@@ -261,7 +333,7 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
                         )}
 
                         {/* Legend */}
-                        <div className="flex items-center gap-4 mt-4 text-xs font-manrope text-gray-400">
+                        <div className="flex items-center gap-3 mt-4 text-xs font-manrope text-gray-400 flex-wrap">
                             <span className="flex items-center gap-1.5">
                                 <span className="w-3 h-3 rounded-full bg-orange-500 inline-block" />
                                 Completed
@@ -274,6 +346,12 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
                                 <span className="w-3 h-3 rounded-full bg-gray-100 inline-block" />
                                 Missed
                             </span>
+                            {habit?.frequency_type === "specific_days" && (
+                                <span className="flex items-center gap-1.5">
+                                    <span className="w-3 h-3 rounded-full bg-gray-50 border border-gray-200 inline-block" />
+                                    Rest day
+                                </span>
+                            )}
                         </div>
                     </div>
 

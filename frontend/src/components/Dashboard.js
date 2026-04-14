@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
 import { toast } from "sonner";
 import HabitDetailModal from "./HabitDetailModal";
+import { FrequencyBadge, WeeklyProgressDots, isScheduledToday } from "./FrequencyPicker";
 
 const MOOD_OPTIONS = [
   { rating: 1, emoji: "😢", label: "Rough" },
@@ -130,6 +131,38 @@ export default function Dashboard() {
     }
   };
 
+  // Split habits into scheduled and rest day
+  const scheduledHabits = useMemo(() => habits.filter(h => isScheduledToday(h)), [habits]);
+  const restDayHabits = useMemo(() => habits.filter(h => !isScheduledToday(h)), [habits]);
+
+  // Get weekly completions count for times_per_week habits
+  const [weeklyCompletions, setWeeklyCompletions] = useState({});
+  useEffect(() => {
+    const fetchWeeklyComps = async () => {
+      const weeklyHabits = habits.filter(h => h.frequency_type === "times_per_week");
+      if (weeklyHabits.length === 0) return;
+      // Get start of current ISO week (Monday)
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0=Sun
+      const diffToMon = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - diffToMon);
+      const mondayStr = monday.toISOString().split("T")[0];
+      try {
+        const res = await api.get(`/completions`);
+        // Filter completions from monday onwards per habit
+        const weekMap = {};
+        (res.data || []).forEach(c => {
+          if (c.date >= mondayStr) {
+            weekMap[c.habit_id] = (weekMap[c.habit_id] || 0) + 1;
+          }
+        });
+        setWeeklyCompletions(weekMap);
+      } catch { /* silent */ }
+    };
+    fetchWeeklyComps();
+  }, [habits, completions]);
+
   const completionPct = stats.max_today_points > 0
     ? Math.round(stats.today_points / stats.max_today_points * 100)
     : 0;
@@ -152,6 +185,10 @@ export default function Dashboard() {
             <h1 className="text-2xl font-black text-gray-900 font-chivo">
               {stats.habits_today === stats.habits_total && stats.habits_total > 0
                 ? "Perfect Day! 🔥"
+                : scheduledHabits.length === 0 && habits.length > 0
+                  ? user?.mode === "supportive" ? "Rest day — you earned it 💚"
+                    : user?.mode === "strategic" ? "No habits scheduled today."
+                    : `Hey, ${user?.name?.split(" ")[0] || "Champion"}`
                 : `Hey, ${user?.name?.split(" ")[0] || "Champion"}`}
             </h1>
           </div>
@@ -227,65 +264,124 @@ export default function Dashboard() {
             <p className="text-gray-400 font-manrope text-sm">No habits yet. Add some in Settings.</p>
           </div>
         ) : (
-          habits.map((habit) => {
-            const done = !!completions[habit.habit_id];
-            const isAnimating = animating[habit.habit_id];
-            return (
-              <button
-                key={habit.habit_id}
-                data-testid={`habit-toggle-${habit.habit_id}`}
-                onClick={() => setSelectedHabit(habit)}
-                className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all duration-300 active:scale-[0.98] ${
-                  done
-                    ? "bg-orange-50 border-orange-300 shadow-sm"
-                    : "bg-white border-gray-100 hover:border-orange-200 hover:shadow-md shadow-sm"
-                  } ${isAnimating ? "scale-[0.97]" : "scale-100"}`}
-              >
-                {/* Check button (Click to toggle today's completion) */}
-                <div
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleHabit(habit);
-                  }}
-                  className={`w-10 h-10 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-300 ${done
-                    ? "bg-orange-500 border-orange-500 shadow-lg shadow-orange-200 hover:bg-orange-600"
-                    : "border-gray-200 bg-white hover:border-orange-300"
-                    }`}
+          <>
+            {/* Due Today habits */}
+            {scheduledHabits.map((habit) => {
+              const done = !!completions[habit.habit_id];
+              const isAnimating = animating[habit.habit_id];
+              return (
+                <button
+                  key={habit.habit_id}
+                  data-testid={`habit-toggle-${habit.habit_id}`}
+                  onClick={() => setSelectedHabit(habit)}
+                  className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all duration-300 active:scale-[0.98] ${
+                    done
+                      ? "bg-orange-50 border-orange-300 shadow-sm"
+                      : "bg-white border-gray-100 hover:border-orange-200 hover:shadow-md shadow-sm"
+                    } ${isAnimating ? "scale-[0.97]" : "scale-100"}`}
                 >
-                  {done && (
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <p className={`font-bold font-chivo text-base ${done ? "text-gray-500 line-through" : "text-gray-900"}`}>
-                    {habit.name}
-                  </p>
-                  {habit.context && (
-                    <p className="text-xs text-gray-400 font-manrope truncate mt-0.5">For: {habit.context}</p>
-                  )}
-                </div>
-
-                {/* Right side: priority + calendar cue */}
-                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                  <div className="flex gap-0.5">
-                    {[1, 2, 3].map((s) => (
-                      <span key={s} className={`text-xs ${s <= habit.priority ? "text-orange-500" : "text-gray-200"}`}>★</span>
-                    ))}
+                  <div
+                    onClick={(e) => { e.stopPropagation(); toggleHabit(habit); }}
+                    className={`w-10 h-10 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-300 ${done
+                      ? "bg-orange-500 border-orange-500 shadow-lg shadow-orange-200 hover:bg-orange-600"
+                      : "border-gray-200 bg-white hover:border-orange-300"
+                      }`}
+                  >
+                    {done && (
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1.5 bg-orange-100 text-orange-600 px-2.5 py-1 rounded-full">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span className="text-[11px] font-bold font-chivo">History</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-bold font-chivo text-base ${done ? "text-gray-500 line-through" : "text-gray-900"}`}>
+                      {habit.name}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {habit.context && (
+                        <p className="text-xs text-gray-400 font-manrope truncate">For: {habit.context}</p>
+                      )}
+                      <FrequencyBadge habit={habit} />
+                    </div>
+                    {habit.frequency_type === "times_per_week" && (
+                      <div className="mt-1">
+                        <WeeklyProgressDots habit={habit} weekCompletions={weeklyCompletions[habit.habit_id] || 0} />
+                      </div>
+                    )}
                   </div>
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3].map((s) => (
+                        <span key={s} className={`text-xs ${s <= habit.priority ? "text-orange-500" : "text-gray-200"}`}>★</span>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-orange-100 text-orange-600 px-2.5 py-1 rounded-full">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-[11px] font-bold font-chivo">History</span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+
+            {/* Rest Day habits — dimmed section */}
+            {restDayHabits.length > 0 && (
+              <>
+                <div className="flex items-center gap-3 pt-3">
+                  <div className="h-px flex-1 bg-gray-200" />
+                  <span className="text-[10px] text-gray-400 font-manrope uppercase tracking-widest">Rest Day</span>
+                  <div className="h-px flex-1 bg-gray-200" />
                 </div>
-              </button>
-            );
-          })
+                {restDayHabits.map((habit) => {
+                  const done = !!completions[habit.habit_id];
+                  const isAnimating = animating[habit.habit_id];
+                  return (
+                    <button
+                      key={habit.habit_id}
+                      data-testid={`habit-toggle-${habit.habit_id}`}
+                      onClick={() => setSelectedHabit(habit)}
+                      className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all duration-300 active:scale-[0.98] opacity-50 ${
+                        done
+                          ? "bg-gray-50 border-gray-200 shadow-sm"
+                          : "bg-white border-gray-100 hover:border-gray-200 shadow-sm"
+                        } ${isAnimating ? "scale-[0.97]" : "scale-100"}`}
+                    >
+                      <div
+                        onClick={(e) => { e.stopPropagation(); toggleHabit(habit); }}
+                        className={`w-10 h-10 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-300 ${done
+                          ? "bg-gray-400 border-gray-400"
+                          : "border-gray-200 bg-white hover:border-gray-300"
+                          }`}
+                      >
+                        {done && (
+                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-bold font-chivo text-base ${done ? "text-gray-400 line-through" : "text-gray-500"}`}>
+                          {habit.name}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <FrequencyBadge habit={habit} />
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                        <div className="flex gap-0.5">
+                          {[1, 2, 3].map((s) => (
+                            <span key={s} className={`text-xs ${s <= habit.priority ? "text-gray-300" : "text-gray-200"}`}>★</span>
+                          ))}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+          </>
         )}
       </div>
 

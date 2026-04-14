@@ -3,12 +3,13 @@ import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
 import { toast } from "sonner";
 import ForgeHeader from "./ForgeHeader";
+import { FrequencyPicker, FrequencyBadge } from "./FrequencyPicker";
 
 export default function Settings() {
   const { user, logout, refreshUser } = useAuth();
   const [habits, setHabits] = useState([]);
   const [editingHabit, setEditingHabit] = useState(null);
-  const [newHabit, setNewHabit] = useState({ name: "", priority: 1, context: "" });
+  const [newHabit, setNewHabit] = useState({ name: "", priority: 1, context: "", frequency_type: "daily", frequency_days: [], frequency_target: 7 });
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -45,10 +46,14 @@ export default function Settings() {
 
   const addHabit = async () => {
     if (!newHabit.name.trim()) return;
+    if (newHabit.frequency_type === "specific_days" && newHabit.frequency_days.length === 0) {
+      toast.error("Select at least one day for Specific Days frequency.");
+      return;
+    }
     try {
       const res = await api.post("/habits", newHabit);
       setHabits([...habits, res.data]);
-      setNewHabit({ name: "", priority: 1, context: "" });
+      setNewHabit({ name: "", priority: 1, context: "", frequency_type: "daily", frequency_days: [], frequency_target: 7 });
       toast.success("Habit added!");
     } catch {
       toast.error("Failed to add habit.");
@@ -296,6 +301,12 @@ export default function Settings() {
                               </button>
                             ))}
                           </div>
+                          <FrequencyPicker
+                            frequencyType={editingHabit.frequency_type || "daily"}
+                            frequencyDays={editingHabit.frequency_days || []}
+                            frequencyTarget={editingHabit.frequency_target || 7}
+                            onChange={(f) => setEditingHabit({ ...editingHabit, ...f })}
+                          />
                           <div className="flex gap-2">
                             <button onClick={() => setEditingHabit(null)}
                               className="flex-1 py-2 border border-gray-200 text-gray-500 text-xs font-bold font-chivo rounded-xl">
@@ -303,7 +314,11 @@ export default function Settings() {
                             </button>
                             <button
                               data-testid={`habit-save-${h.habit_id}`}
-                              onClick={() => updateHabit(h.habit_id, { name: editingHabit.name, priority: editingHabit.priority, context: editingHabit.context })}
+                              onClick={() => updateHabit(h.habit_id, {
+                                name: editingHabit.name, priority: editingHabit.priority, context: editingHabit.context,
+                                frequency_type: editingHabit.frequency_type, frequency_days: editingHabit.frequency_days,
+                                frequency_target: editingHabit.frequency_target
+                              })}
                               className="flex-1 py-2 bg-orange-500 text-white text-xs font-bold font-chivo rounded-xl">
                               Save
                             </button>
@@ -318,7 +333,10 @@ export default function Settings() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-gray-800 font-manrope">{h.name}</p>
-                            {h.context && <p className="text-xs text-gray-400 font-manrope">For: {h.context}</p>}
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {h.context && <p className="text-xs text-gray-400 font-manrope">For: {h.context}</p>}
+                              <FrequencyBadge habit={h} />
+                            </div>
                           </div>
                           <button onClick={() => setEditingHabit({ ...h })}
                             className="text-gray-400 hover:text-orange-500 transition-colors p-1">
@@ -359,7 +377,7 @@ export default function Settings() {
                 placeholder="What is this for? (optional)"
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
               />
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center gap-3 mb-3">
                 <span className="text-xs text-gray-500 font-manrope">Priority:</span>
                 {[1, 2, 3].map((p) => (
                   <button key={p} onClick={() => setNewHabit({ ...newHabit, priority: p })}
@@ -368,6 +386,13 @@ export default function Settings() {
                   </button>
                 ))}
               </div>
+              <FrequencyPicker
+                frequencyType={newHabit.frequency_type}
+                frequencyDays={newHabit.frequency_days}
+                frequencyTarget={newHabit.frequency_target}
+                onChange={(f) => setNewHabit({ ...newHabit, ...f })}
+              />
+              <div className="mt-3" />
               <button
                 data-testid="settings-add-habit-btn"
                 onClick={addHabit}
