@@ -16,30 +16,30 @@ const MOOD_OPTIONS = [
 function WellnessModal({ warning, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center">
-      <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 animate-in slide-in-from-bottom-4 duration-300">
-        <div className="w-12 h-1 bg-gray-200 rounded-full mx-auto mb-6" />
+      <div className="bg-white dark:bg-gray-950 w-full max-w-lg rounded-t-3xl p-6 animate-in slide-in-from-bottom-4 duration-300">
+        <div className="w-12 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-6" />
         <div className="flex items-start gap-3 mb-4">
-          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 bg-red-100 dark:bg-red-950/40 rounded-xl flex items-center justify-center flex-shrink-0">
             <span className="text-xl">💙</span>
           </div>
           <div>
-            <h3 className="font-bold font-chivo text-gray-900 mb-1">Checking In</h3>
-            <p className="text-sm text-gray-600 font-manrope leading-relaxed">{warning.message}</p>
+            <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">Checking In</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 font-manrope leading-relaxed">{warning.message}</p>
           </div>
         </div>
-        <div className="bg-red-50 rounded-2xl p-4 mb-4">
-          <p className="text-xs font-bold text-red-700 mb-2 uppercase tracking-widest font-chivo">Resources</p>
+        <div className="bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/50 rounded-2xl p-4 mb-4">
+          <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2 uppercase tracking-widest font-chivo">Resources</p>
           {warning.resources.map((r, i) => (
-            <div key={i} className="flex justify-between items-center py-1.5 border-b border-red-100 last:border-0">
-              <span className="text-sm font-manrope text-gray-700">{r.name}</span>
-              <span className="text-sm font-bold text-red-600 font-manrope">{r.contact}</span>
+            <div key={i} className="flex justify-between items-center py-1.5 border-b border-red-100 dark:border-red-900/50 last:border-0">
+              <span className="text-sm font-manrope text-gray-700 dark:text-gray-300">{r.name}</span>
+              <span className="text-sm font-bold text-red-600 dark:text-red-400 font-manrope">{r.contact}</span>
             </div>
           ))}
         </div>
         <button
           data-testid="wellness-modal-close"
           onClick={onClose}
-          className="w-full py-3 bg-gray-900 text-white font-chivo font-bold text-sm tracking-wide uppercase rounded-xl active:scale-95 transition-all"
+          className="w-full py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-chivo font-bold text-sm tracking-wide uppercase rounded-xl active:scale-95 transition-all"
         >
           I'm okay, continue
         </button>
@@ -169,20 +169,20 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen bg-white dark:bg-gray-950 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-6 pt-12 pb-5 sticky top-0 z-10">
+      <div className="bg-white dark:bg-gray-950 border-b border-gray-100 dark:border-gray-800 px-6 pt-12 pb-5 sticky top-0 z-10">
         <div className="flex items-center justify-between mb-1">
           <div>
-            <p className="text-xs text-gray-400 font-manrope uppercase tracking-widest">{today}</p>
-            <h1 className="text-2xl font-black text-gray-900 font-chivo">
+            <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope uppercase tracking-widest">{today}</p>
+            <h1 className="text-2xl font-black text-gray-900 dark:text-white font-chivo">
               {stats.habits_today === stats.habits_total && stats.habits_total > 0
                 ? "Perfect Day! 🔥"
                 : scheduledHabits.length === 0 && habits.length > 0
@@ -201,7 +201,7 @@ export default function Dashboard() {
                   <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z" />
                 </svg>
               </div>
-              <span className="text-sm font-black text-gray-900 font-chivo tracking-tight">FORGE</span>
+              <span className="text-sm font-black text-gray-900 dark:text-white font-chivo tracking-tight">FORGE</span>
             </div>
             {user?.picture && (
               <img src={user.picture} alt="avatar" className="w-9 h-9 rounded-full border-2 border-orange-200" />
@@ -211,25 +211,25 @@ export default function Dashboard() {
 
         {/* Stats row */}
         <div className="flex gap-3 mt-3">
-          <div data-testid="streak-counter" className="flex items-center gap-1.5 bg-orange-50 rounded-xl px-3 py-2 border border-orange-100">
+          <div data-testid="streak-counter" className="flex items-center gap-1.5 bg-orange-50 dark:bg-orange-950/30 rounded-xl px-3 py-2 border border-orange-100 dark:border-orange-900/50">
             <span className="text-orange-500 text-lg">🔥</span>
             <div>
-              <p className="text-xs text-gray-400 font-manrope leading-none">Streak</p>
-              <p className="text-base font-black text-gray-900 font-chivo leading-tight">{stats.streak}d</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope leading-none">Streak</p>
+              <p className="text-base font-black text-gray-900 dark:text-white font-chivo leading-tight">{stats.streak}d</p>
             </div>
           </div>
-          <div data-testid="points-display" className="flex items-center gap-1.5 bg-yellow-50 rounded-xl px-3 py-2 border border-yellow-100">
+          <div data-testid="points-display" className="flex items-center gap-1.5 bg-yellow-50 dark:bg-yellow-950/30 rounded-xl px-3 py-2 border border-yellow-100 dark:border-yellow-900/50">
             <span className="text-yellow-500 text-lg">⚡</span>
             <div>
-              <p className="text-xs text-gray-400 font-manrope leading-none">Today</p>
-              <p className="text-base font-black text-gray-900 font-chivo leading-tight">{stats.today_points}pt</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope leading-none">Today</p>
+              <p className="text-base font-black text-gray-900 dark:text-white font-chivo leading-tight">{stats.today_points}pt</p>
             </div>
           </div>
-          <div className="flex-1 flex items-center gap-1.5 bg-blue-50 rounded-xl px-3 py-2 border border-blue-100">
-            <span className="text-blue-500 text-sm font-bold font-chivo">Lv.{stats.level}</span>
+          <div className="flex-1 flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/30 rounded-xl px-3 py-2 border border-blue-100 dark:border-blue-900/50">
+            <span className="text-blue-500 dark:text-blue-400 text-sm font-bold font-chivo">Lv.{stats.level}</span>
             <div className="flex-1">
-              <p className="text-xs text-gray-400 font-manrope leading-none">Level</p>
-              <div className="h-1.5 bg-blue-100 rounded-full mt-0.5 overflow-hidden">
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope leading-none">Level</p>
+              <div className="h-1.5 bg-blue-100 dark:bg-blue-900/40 rounded-full mt-0.5 overflow-hidden">
                 <div
                   className="h-full bg-blue-500 rounded-full transition-all duration-500"
                   style={{ width: `${stats.level_progress_pct || 0}%` }}
@@ -242,12 +242,12 @@ export default function Dashboard() {
         {/* Daily progress */}
         <div className="mt-3">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-xs text-gray-400 font-manrope">Daily Progress</span>
-            <span className="text-xs font-bold text-gray-700 font-chivo">
+            <span className="text-xs text-gray-400 dark:text-gray-500 font-manrope">Daily Progress</span>
+            <span className="text-xs font-bold text-gray-700 dark:text-gray-300 font-chivo">
               {stats.habits_today}/{stats.habits_total} habits · {completionPct}%
             </span>
           </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
             <div
               data-testid="daily-progress-bar"
               className={`h-full rounded-full transition-all duration-700 ${completionPct === 100 ? "bg-gradient-to-r from-orange-500 to-red-500" : "bg-orange-400"}`}
@@ -261,7 +261,7 @@ export default function Dashboard() {
       <div className="px-6 pt-5 space-y-3">
         {habits.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-400 font-manrope text-sm">No habits yet. Add some in Settings.</p>
+            <p className="text-gray-400 dark:text-gray-500 font-manrope text-sm">No habits yet. Add some in Settings.</p>
           </div>
         ) : (
           <>
@@ -277,14 +277,14 @@ export default function Dashboard() {
                   className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all duration-300 active:scale-[0.98] ${
                     done
                       ? "bg-orange-50 border-orange-300 shadow-sm"
-                      : "bg-white border-gray-100 hover:border-orange-200 hover:shadow-md shadow-sm"
+                      : "bg-white dark:bg-gray-950 border-gray-100 dark:border-gray-800 hover:border-orange-200 hover:shadow-md shadow-sm"
                     } ${isAnimating ? "scale-[0.97]" : "scale-100"}`}
                 >
                   <div
                     onClick={(e) => { e.stopPropagation(); toggleHabit(habit); }}
                     className={`w-10 h-10 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-300 ${done
                       ? "bg-orange-500 border-orange-500 shadow-lg shadow-orange-200 hover:bg-orange-600"
-                      : "border-gray-200 bg-white hover:border-orange-300"
+                      : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 hover:border-orange-300"
                       }`}
                   >
                     {done && (
@@ -294,12 +294,12 @@ export default function Dashboard() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={`font-bold font-chivo text-base ${done ? "text-gray-500 line-through" : "text-gray-900"}`}>
+                    <p className={`font-bold font-chivo text-base ${done ? "text-gray-500 dark:text-gray-500 line-through" : "text-gray-900 dark:text-white"}`}>
                       {habit.name}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
                       {habit.context && (
-                        <p className="text-xs text-gray-400 font-manrope truncate">For: {habit.context}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope truncate">For: {habit.context}</p>
                       )}
                       <FrequencyBadge habit={habit} />
                     </div>
@@ -330,9 +330,9 @@ export default function Dashboard() {
             {restDayHabits.length > 0 && (
               <>
                 <div className="flex items-center gap-3 pt-3">
-                  <div className="h-px flex-1 bg-gray-200" />
-                  <span className="text-[10px] text-gray-400 font-manrope uppercase tracking-widest">Rest Day</span>
-                  <div className="h-px flex-1 bg-gray-200" />
+                  <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500 font-manrope uppercase tracking-widest">Rest Day</span>
+                  <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
                 </div>
                 {restDayHabits.map((habit) => {
                   const done = !!completions[habit.habit_id];
@@ -344,15 +344,15 @@ export default function Dashboard() {
                       onClick={() => setSelectedHabit(habit)}
                       className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all duration-300 active:scale-[0.98] opacity-50 ${
                         done
-                          ? "bg-gray-50 border-gray-200 shadow-sm"
-                          : "bg-white border-gray-100 hover:border-gray-200 shadow-sm"
+                          ? "bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm"
+                          : "bg-white dark:bg-gray-950 border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:border-gray-700 shadow-sm"
                         } ${isAnimating ? "scale-[0.97]" : "scale-100"}`}
                     >
                       <div
                         onClick={(e) => { e.stopPropagation(); toggleHabit(habit); }}
                         className={`w-10 h-10 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-300 ${done
                           ? "bg-gray-400 border-gray-400"
-                          : "border-gray-200 bg-white hover:border-gray-300"
+                          : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 hover:border-gray-300"
                           }`}
                       >
                         {done && (
@@ -362,7 +362,7 @@ export default function Dashboard() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`font-bold font-chivo text-base ${done ? "text-gray-400 line-through" : "text-gray-500"}`}>
+                        <p className={`font-bold font-chivo text-base ${done ? "text-gray-400 dark:text-gray-500 line-through" : "text-gray-500 dark:text-gray-500"}`}>
                           {habit.name}
                         </p>
                         <div className="flex items-center gap-2 mt-0.5">
@@ -387,11 +387,11 @@ export default function Dashboard() {
 
       {/* Mood check-in */}
       <div className="px-6 mt-6">
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="font-bold font-chivo text-gray-900 text-sm">How are you feeling?</h3>
-              <p className="text-xs text-gray-400 font-manrope">Mood tracking reveals patterns over time</p>
+              <h3 className="font-bold font-chivo text-gray-900 dark:text-white text-sm">How are you feeling?</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope">Mood tracking reveals patterns over time</p>
             </div>
             {todayMood && (
               <span className="text-xl" data-testid="today-mood-display">
@@ -407,10 +407,10 @@ export default function Dashboard() {
                   key={m.rating}
                   data-testid={`mood-btn-${m.rating}`}
                   onClick={() => { setMoodRating(m.rating); setShowMoodForm(true); }}
-                  className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-orange-50 transition-colors active:scale-95"
+                  className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-950/30 transition-colors active:scale-95"
                 >
                   <span className="text-2xl">{m.emoji}</span>
-                  <span className="text-xs text-gray-400 font-manrope">{m.label}</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500 font-manrope">{m.label}</span>
                 </button>
               ))}
             </div>
@@ -434,13 +434,13 @@ export default function Dashboard() {
                 value={gratitude}
                 onChange={(e) => setGratitude(e.target.value)}
                 placeholder="What are you grateful for today? (optional)"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-manrope resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 mb-3"
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-manrope resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 mb-3"
                 rows={2}
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowMoodForm(false)}
-                  className="flex-1 py-2.5 border border-gray-200 text-gray-500 font-chivo font-bold text-sm uppercase tracking-wide rounded-xl active:scale-95 transition-all"
+                  className="flex-1 py-2.5 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-500 font-chivo font-bold text-sm uppercase tracking-wide rounded-xl active:scale-95 transition-all"
                 >
                   Cancel
                 </button>
@@ -457,8 +457,8 @@ export default function Dashboard() {
           )}
 
           {todayMood && !showMoodForm && (
-            <div className="bg-orange-50 rounded-xl p-3">
-              <p className="text-xs text-orange-700 font-manrope">
+            <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-100 dark:border-orange-900/50 rounded-xl p-3">
+              <p className="text-xs text-orange-700 dark:text-orange-400 font-manrope">
                 {todayMood.gratitude ? `Grateful for: "${todayMood.gratitude}"` : "Mood logged for today"}
               </p>
               <button onClick={() => { setMoodRating(todayMood.rating); setGratitude(todayMood.gratitude || ""); setShowMoodForm(true); }}

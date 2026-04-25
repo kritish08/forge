@@ -219,12 +219,12 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
             {/* Panel */}
-            <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="relative w-full sm:max-w-md bg-white dark:bg-gray-950 rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden">
 
                 {/* ── Header ───────────────────────────────────────────────── */}
                 <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
                     <div>
-                        <h2 className="text-2xl font-black text-gray-900 font-chivo tracking-tight leading-none">
+                        <h2 className="text-2xl font-black text-gray-900 dark:text-white font-chivo tracking-tight leading-none">
                             {habit.name}
                         </h2>
                         <div className="flex items-center gap-2 mt-1.5">
@@ -236,7 +236,7 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
                     </div>
                     <button
                         onClick={onClose}
-                        className="flex items-center justify-center w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors"
+                        className="flex items-center justify-center w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-gray-500 dark:text-gray-500 transition-colors"
                     >
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
@@ -246,7 +246,7 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
 
                 {/* ── Stats row ────────────────────────────────────────────── */}
                 <div className="flex gap-3 px-6 pb-4 shrink-0">
-                    <div className="flex-1 bg-gray-900 rounded-2xl px-4 py-3">
+                    <div className="flex-1 bg-gray-800 rounded-2xl px-4 py-3">
                         <div className="text-2xl font-black text-orange-400 font-chivo">{totalCount}</div>
                         <div className="text-xs text-gray-400 font-manrope mt-0.5">Total check-ins</div>
                     </div>
@@ -269,19 +269,19 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
                     {/* ── Activity calendar ────────────────────────────────── */}
                     <div>
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-black text-gray-900 font-chivo">Activity</h3>
+                            <h3 className="text-lg font-black text-gray-900 dark:text-white font-chivo">Activity</h3>
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
-                                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                                    className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 dark:bg-gray-800 transition-colors"
                                 >
                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
                                 </button>
-                                <span className="text-sm font-bold font-chivo text-gray-700 min-w-[130px] text-center">{monthLabel}</span>
+                                <span className="text-sm font-bold font-chivo text-gray-700 dark:text-gray-300 min-w-[130px] text-center">{monthLabel}</span>
                                 <button
                                     onClick={() => !isCurrentMonth && setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
                                     disabled={isCurrentMonth}
-                                    className={`p-1.5 rounded-lg transition-colors ${isCurrentMonth ? "text-gray-200 cursor-not-allowed" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"}`}
+                                    className={`p-1.5 rounded-lg transition-colors ${isCurrentMonth ? "text-gray-200 cursor-not-allowed" : "text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 dark:bg-gray-800"}`}
                                 >
                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" /></svg>
                                 </button>
@@ -299,7 +299,7 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
                             <>
                                 <div className="grid grid-cols-7 mb-2">
                                     {weekDays.map(d => (
-                                        <div key={d} className="text-center text-[10px] font-bold text-gray-400 font-manrope uppercase tracking-wider py-1">{d}</div>
+                                        <div key={d} className="text-center text-[10px] font-bold text-gray-400 dark:text-gray-500 font-manrope uppercase tracking-wider py-1">{d}</div>
                                     ))}
                                 </div>
                                 <div className="grid grid-cols-7 gap-y-1.5">
@@ -316,9 +316,9 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
                                                     ${d.isFuture ? "text-gray-200 cursor-not-allowed" :
                                                     !editable ? "text-gray-300 cursor-not-allowed" :
                                                     done ? "bg-orange-500 text-white shadow-md shadow-orange-200 hover:bg-orange-600" :
-                                                    d.isRestDay ? "text-gray-300 bg-gray-50 cursor-pointer" :
+                                                    d.isRestDay ? "text-gray-300 bg-gray-50 dark:bg-gray-900 cursor-pointer" :
                                                     d.isToday ? "ring-2 ring-orange-400 text-orange-600 font-bold hover:bg-orange-50" :
-                                                    "text-gray-600 hover:bg-gray-100"}`}
+                                                    "text-gray-600 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 dark:bg-gray-800"}`}
                                             >
                                                 {done ? (
                                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -333,7 +333,7 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
                         )}
 
                         {/* Legend */}
-                        <div className="flex items-center gap-3 mt-4 text-xs font-manrope text-gray-400 flex-wrap">
+                        <div className="flex items-center gap-3 mt-4 text-xs font-manrope text-gray-400 dark:text-gray-500 flex-wrap">
                             <span className="flex items-center gap-1.5">
                                 <span className="w-3 h-3 rounded-full bg-orange-500 inline-block" />
                                 Completed
@@ -343,12 +343,12 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
                                 Today
                             </span>
                             <span className="flex items-center gap-1.5">
-                                <span className="w-3 h-3 rounded-full bg-gray-100 inline-block" />
+                                <span className="w-3 h-3 rounded-full bg-gray-100 dark:bg-gray-800 inline-block" />
                                 Missed
                             </span>
                             {habit?.frequency_type === "specific_days" && (
                                 <span className="flex items-center gap-1.5">
-                                    <span className="w-3 h-3 rounded-full bg-gray-50 border border-gray-200 inline-block" />
+                                    <span className="w-3 h-3 rounded-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 inline-block" />
                                     Rest day
                                 </span>
                             )}
@@ -357,18 +357,18 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
 
                     {/* ── Goal / Context ───────────────────────────────────── */}
                     <div>
-                        <h3 className="text-lg font-black text-gray-900 font-chivo mb-3">Goal</h3>
+                        <h3 className="text-lg font-black text-gray-900 dark:text-white font-chivo mb-3">Goal</h3>
                         <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4">
                             <p className="text-orange-900 font-manrope font-medium leading-relaxed">
                                 {habit.context || "No goal set yet."}
                             </p>
                         </div>
                         {habit.target_time && (
-                            <div className="mt-2 flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
-                                <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <div className="mt-2 flex items-center gap-2 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl px-4 py-3">
+                                <svg className="w-4 h-4 text-gray-400 dark:text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
-                                <span className="text-sm font-manrope text-gray-600 font-medium">Target: {habit.target_time}</span>
+                                <span className="text-sm font-manrope text-gray-600 dark:text-gray-500 font-medium">Target: {habit.target_time}</span>
                             </div>
                         )}
                     </div>

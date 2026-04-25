@@ -224,18 +224,18 @@ export default function Settings() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
       {/* Header */}
       <ForgeHeader title="Settings" />
 
       {/* Profile */}
       <div className="px-6 pt-5">
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-5">
+        <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 mb-5">
           <div className="flex items-center gap-4">
             {user?.picture && <img src={user.picture} alt="avatar" className="w-14 h-14 rounded-full border-2 border-orange-200" />}
             <div>
-              <p className="font-bold font-chivo text-gray-900 text-lg">{user?.name}</p>
-              <p className="text-sm text-gray-400 font-manrope">{user?.email}</p>
+              <p className="font-bold font-chivo text-gray-900 dark:text-white text-lg">{user?.name}</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 font-manrope">{user?.email}</p>
             </div>
           </div>
           <button
@@ -248,15 +248,15 @@ export default function Settings() {
         </div>
 
         {/* Tabs */}
-        <div className="flex bg-gray-100 rounded-2xl p-1 mb-5 flex-wrap gap-1">
+        <div className="flex bg-gray-100 dark:bg-gray-800 rounded-2xl p-1 mb-5 flex-wrap gap-1">
           {[{ id: "habits", label: "Habits" }, { id: "notifications", label: "Notifications" }, { id: "ai", label: "AI Key" }, { id: "mode", label: "Mode" }, { id: "danger", label: "Danger" }].map((tab) => (
             <button
               key={tab.id}
               data-testid={`settings-tab-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 min-w-[70px] py-2.5 rounded-xl text-xs sm:text-sm font-bold font-chivo transition-all ${activeTab === tab.id 
-                ? (tab.id === "danger" ? "bg-red-500 text-white shadow-sm" : "bg-white text-gray-900 shadow-sm") 
-                : "text-gray-500 hover:bg-gray-200"
+                ? (tab.id === "danger" ? "bg-red-500 text-white shadow-sm" : "bg-white dark:bg-gray-950 text-gray-900 dark:text-white shadow-sm") 
+                : "text-gray-500 dark:text-gray-500 hover:bg-gray-200"
                 }`}
             >
               {tab.label}
@@ -268,14 +268,14 @@ export default function Settings() {
         {activeTab === "habits" && (
           <div className="space-y-4">
             {/* Existing habits */}
-            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <h3 className="font-bold font-chivo text-gray-900">Your Habits</h3>
+            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+                <h3 className="font-bold font-chivo text-gray-900 dark:text-white">Your Habits</h3>
               </div>
               {habits.length === 0 ? (
-                <div className="p-5 text-center text-gray-400 text-sm font-manrope">No habits yet</div>
+                <div className="p-5 text-center text-gray-400 dark:text-gray-500 text-sm font-manrope">No habits yet</div>
               ) : (
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
                   {habits.map((h) => (
                     <div key={h.habit_id} className="px-5 py-4">
                       {editingHabit?.habit_id === h.habit_id ? (
@@ -284,19 +284,19 @@ export default function Settings() {
                             data-testid={`habit-edit-name-${h.habit_id}`}
                             value={editingHabit.name}
                             onChange={(e) => setEditingHabit({ ...editingHabit, name: e.target.value })}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-orange-300"
+                            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-orange-300"
                           />
                           <input
                             value={editingHabit.context || ""}
                             onChange={(e) => setEditingHabit({ ...editingHabit, context: e.target.value })}
                             placeholder="What is this for?"
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-orange-300"
+                            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-orange-300"
                           />
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500 font-manrope">Priority:</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-500 font-manrope">Priority:</span>
                             {[1, 2, 3].map((p) => (
                               <button key={p} onClick={() => setEditingHabit({ ...editingHabit, priority: p })}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${editingHabit.priority === p ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-500"}`}>
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${editingHabit.priority === p ? "bg-orange-500 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-500"}`}>
                                 {"⭐".repeat(p)}
                               </button>
                             ))}
@@ -309,7 +309,7 @@ export default function Settings() {
                           />
                           <div className="flex gap-2">
                             <button onClick={() => setEditingHabit(null)}
-                              className="flex-1 py-2 border border-gray-200 text-gray-500 text-xs font-bold font-chivo rounded-xl">
+                              className="flex-1 py-2 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-500 text-xs font-bold font-chivo rounded-xl">
                               Cancel
                             </button>
                             <button
@@ -332,14 +332,14 @@ export default function Settings() {
                             ))}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-800 font-manrope">{h.name}</p>
+                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 font-manrope">{h.name}</p>
                             <div className="flex items-center gap-2 mt-0.5">
-                              {h.context && <p className="text-xs text-gray-400 font-manrope">For: {h.context}</p>}
+                              {h.context && <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope">For: {h.context}</p>}
                               <FrequencyBadge habit={h} />
                             </div>
                           </div>
                           <button onClick={() => setEditingHabit({ ...h })}
-                            className="text-gray-400 hover:text-orange-500 transition-colors p-1">
+                            className="text-gray-400 dark:text-gray-500 hover:text-orange-500 transition-colors p-1">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
@@ -347,7 +347,7 @@ export default function Settings() {
                           <button
                             data-testid={`habit-delete-${h.habit_id}`}
                             onClick={() => deleteHabit(h.habit_id)}
-                            className="text-gray-400 hover:text-red-400 transition-colors p-1">
+                            className="text-gray-400 dark:text-gray-500 hover:text-red-400 transition-colors p-1">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
@@ -361,27 +361,27 @@ export default function Settings() {
             </div>
 
             {/* Add habit form */}
-            <div className="bg-white rounded-2xl border border-gray-100 p-5">
-              <h3 className="font-bold font-chivo text-gray-900 mb-4">Add New Habit</h3>
+            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+              <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-4">Add New Habit</h3>
               <input
                 data-testid="settings-habit-name"
                 value={newHabit.name}
                 onChange={(e) => setNewHabit({ ...newHabit, name: e.target.value })}
                 onKeyDown={(e) => e.key === "Enter" && addHabit()}
                 placeholder="Habit name"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
               />
               <input
                 value={newHabit.context}
                 onChange={(e) => setNewHabit({ ...newHabit, context: e.target.value })}
                 placeholder="What is this for? (optional)"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
               />
               <div className="flex items-center gap-3 mb-3">
-                <span className="text-xs text-gray-500 font-manrope">Priority:</span>
+                <span className="text-xs text-gray-500 dark:text-gray-500 font-manrope">Priority:</span>
                 {[1, 2, 3].map((p) => (
                   <button key={p} onClick={() => setNewHabit({ ...newHabit, priority: p })}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${newHabit.priority === p ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-500"}`}>
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${newHabit.priority === p ? "bg-orange-500 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-500"}`}>
                     {"⭐".repeat(p)}
                   </button>
                 ))}
@@ -409,9 +409,9 @@ export default function Settings() {
         {activeTab === "notifications" && (
           <div className="space-y-4">
             {/* Push Notifications */}
-            <div className="bg-white rounded-2xl border border-gray-100 p-5">
-              <h3 className="font-bold font-chivo text-gray-900 mb-1">🔔 Push Notifications</h3>
-              <p className="text-xs text-gray-400 font-manrope mb-4 leading-relaxed">
+            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+              <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">🔔 Push Notifications</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4 leading-relaxed">
                 Get instant alerts when it's time to check in on your habits
               </p>
 
@@ -425,8 +425,8 @@ export default function Settings() {
               )}
 
               {!pushSupported ? (
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                  <p className="text-sm text-gray-600 font-manrope">
+                <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+                  <p className="text-sm text-gray-600 dark:text-gray-500 font-manrope">
                     Push notifications are not supported in your browser
                   </p>
                 </div>
@@ -465,22 +465,22 @@ export default function Settings() {
             </div>
 
             {/* Email Notifications */}
-            <div className="bg-white rounded-2xl border border-gray-100 p-5">
-              <h3 className="font-bold font-chivo text-gray-900 mb-1">📧 Email Notifications</h3>
-              <p className="text-xs text-gray-400 font-manrope mb-4 leading-relaxed">
+            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+              <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">📧 Email Notifications</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4 leading-relaxed">
                 Receive habit reminders and weekly summaries via email
               </p>
 
               <div className="space-y-3">
                 {/* Daily Reminder */}
-                <div className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
+                <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 rounded-xl p-3">
                   <div>
-                    <p className="text-sm font-bold text-gray-900 font-manrope">Daily Reminder</p>
-                    <p className="text-xs text-gray-500 font-manrope">8:00 PM every day</p>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white font-manrope">Daily Reminder</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 font-manrope">8:00 PM every day</p>
                   </div>
                   <button
                     onClick={() => toggleEmailNotifications('email_daily_reminder')}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user?.email_daily_reminder ? 'bg-orange-500' : 'bg-gray-300'
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user?.email_daily_reminder ? 'bg-orange-500' : 'bg-gray-300 dark:bg-gray-600'
                       }`}
                   >
                     <span
@@ -491,14 +491,14 @@ export default function Settings() {
                 </div>
 
                 {/* Weekly Summary */}
-                <div className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
+                <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 rounded-xl p-3">
                   <div>
-                    <p className="text-sm font-bold text-gray-900 font-manrope">Weekly Summary</p>
-                    <p className="text-xs text-gray-500 font-manrope">Every Sunday at 9:00 AM</p>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white font-manrope">Weekly Summary</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 font-manrope">Every Sunday at 9:00 AM</p>
                   </div>
                   <button
                     onClick={() => toggleEmailNotifications('email_weekly_summary')}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user?.email_weekly_summary ? 'bg-orange-500' : 'bg-gray-300'
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user?.email_weekly_summary ? 'bg-orange-500' : 'bg-gray-300 dark:bg-gray-600'
                       }`}
                   >
                     <span
@@ -517,21 +517,95 @@ export default function Settings() {
                 </div>
               )}
             </div>
+
+            {/* Timezone & Scheduling */}
+            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+              <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">🌍 Timezone & Timing</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4 leading-relaxed">
+                Set your timezone and when you'd like to receive your daily notifications.
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-bold text-gray-900 dark:text-white font-manrope block mb-2">Timezone</label>
+                  <select 
+                    value={user?.timezone || "UTC"}
+                    onChange={(e) => api.put("/user/settings", { timezone: e.target.value }).then(refreshUser).then(() => toast.success("Timezone updated!"))}
+                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    {Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone').map(tz => (
+                      <option key={tz} value={tz}>{tz}</option>
+                    )) : <option value={user?.timezone || "UTC"}>{user?.timezone || "UTC"}</option>}
+                  </select>
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-bold text-gray-900 dark:text-white font-manrope block">Notification Schedules</label>
+                    <button 
+                      onClick={() => {
+                        const current = user?.notification_rules || [];
+                        api.put("/user/settings", { notification_rules: [...current, { days: [0,1,2,3,4,5,6], time: "08:00" }] }).then(refreshUser).then(() => toast.success("Added schedule"));
+                      }}
+                      className="text-orange-500 hover:bg-orange-50 p-1.5 rounded-lg transition-colors flex items-center gap-1 text-sm font-bold font-manrope"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4"/></svg> Add
+                    </button>
+                  </div>
+                  
+                  {(user?.notification_rules || [{ time: "20:00" }]).map((rule, idx) => (
+                    <div key={idx} className="flex gap-2 items-center">
+                      <div className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl flex items-center px-4 overflow-hidden focus-within:ring-2 focus-within:ring-orange-500">
+                        <span className="text-gray-500 dark:text-gray-500 text-sm font-bold font-chivo mr-2">Time:</span>
+                        <input 
+                          type="time" 
+                          value={rule.time || "20:00"}
+                          onChange={(e) => {
+                            const rules = [...(user?.notification_rules || [])];
+                            if (!rules[idx]) rules[idx] = { days: [0,1,2,3,4,5,6] };
+                            rules[idx].time = e.target.value;
+                            api.put("/user/settings", { notification_rules: rules }).then(refreshUser);
+                          }}
+                          className="flex-1 bg-transparent py-3 text-sm font-manrope focus:outline-none"
+                        />
+                      </div>
+                      <button 
+                        onClick={() => {
+                          const rules = [...(user?.notification_rules || [])];
+                          rules.splice(idx, 1);
+                          api.put("/user/settings", { notification_rules: rules }).then(refreshUser);
+                        }}
+                        className="p-3 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                        title="Remove schedule"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                      </button>
+                    </div>
+                  ))}
+                  {user?.notification_rules?.length === 0 && (
+                    <p className="text-sm text-gray-500 dark:text-gray-500 italic py-2">No schedules set. You will not receive any daily reminders.</p>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                    Your reminders will be sent around these times in your local timezone.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
         {/* AI Key tab */}
         {activeTab === "ai" && (
           <div className="space-y-4">
-            <div className="bg-white rounded-2xl border border-gray-100 p-5">
-              <h3 className="font-bold font-chivo text-gray-900 mb-1">AI Connection Status</h3>
-              <p className="text-xs text-gray-400 font-manrope mb-4 leading-relaxed">
+            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+              <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">AI Connection Status</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4 leading-relaxed">
                 Forge is globally connected to your private Azure AI Foundry workspace.
               </p>
 
-              <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 mb-4">
-                <p className="text-xs font-bold text-orange-700 font-chivo mb-1">Current State</p>
-                <p className="text-xs text-orange-600 font-mono">
+              <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-100 dark:border-orange-900/50 rounded-xl p-3 mb-4">
+                <p className="text-xs font-bold text-orange-700 dark:text-orange-400 font-chivo mb-1">Current State</p>
+                <p className="text-xs text-orange-600 dark:text-orange-500 font-mono">
                   Globally Authenticated via Backend Host
                 </p>
               </div>
@@ -551,12 +625,12 @@ export default function Settings() {
 
         {/* Mode tab */}
         {activeTab === "mode" && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-5">
-            <h3 className="font-bold font-chivo text-gray-900 mb-1">Coach Mode</h3>
-            <p className="text-xs text-gray-400 font-manrope mb-4">
+          <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+            <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">Coach Mode</h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4">
               Current: <span className="font-bold text-orange-600">{user?.mode}</span>
             </p>
-            <p className="text-sm text-gray-600 font-manrope leading-relaxed">
+            <p className="text-sm text-gray-600 dark:text-gray-500 font-manrope leading-relaxed">
               To change your coach mode, visit the <a href="/coach" className="text-orange-500 font-bold">AI Coach</a> page
               and select a different mode. Direct Mode requires an activation reason.
             </p>
@@ -570,16 +644,16 @@ export default function Settings() {
         )}
         {/* Danger Zone tab */}
         {activeTab === "danger" && (
-          <div className="bg-white rounded-2xl border border-red-200 p-5">
+          <div className="bg-white dark:bg-gray-950 rounded-2xl border border-red-200 dark:border-red-900/50 p-5">
             <h3 className="font-bold font-chivo text-red-600 mb-1">Danger Zone</h3>
-            <p className="text-sm text-gray-600 font-manrope leading-relaxed mb-4">
+            <p className="text-sm text-gray-600 dark:text-gray-500 font-manrope leading-relaxed mb-4">
               Permanently delete your account and all associated data (habits, check-ins, moods, achievements, insights). 
               <strong className="block mt-1">This action cannot be undone.</strong>
             </p>
             
             <div className="space-y-4 pt-4 border-t border-red-100">
               <div>
-                <label className="block text-xs font-bold text-gray-700 font-manrope mb-2">
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 font-manrope mb-2">
                   Confirm Password to Delete Account:
                 </label>
                 <input
@@ -587,7 +661,7 @@ export default function Settings() {
                   value={deletePassword}
                   onChange={(e) => setDeletePassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full bg-gray-50 border border-red-200 rounded-xl px-4 py-3 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-red-400"
+                  className="w-full bg-gray-50 dark:bg-gray-900 border border-red-200 rounded-xl px-4 py-3 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-red-400"
                 />
               </div>
               <button

@@ -47,7 +47,7 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
+    <div className="min-h-screen bg-white dark:bg-gray-950 flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -57,7 +57,7 @@ export default function ResetPassword() {
                 <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z"/>
               </svg>
             </div>
-            <h1 className="text-3xl font-black text-gray-900 font-chivo tracking-tight">FORGE</h1>
+            <h1 className="text-3xl font-black text-gray-900 dark:text-white font-chivo tracking-tight">FORGE</h1>
           </div>
           <p className="text-orange-600 text-sm font-manrope font-medium tracking-widest uppercase">
             Reset Your Password
@@ -67,7 +67,7 @@ export default function ResetPassword() {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">New Password</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">New Password</label>
             <Input
               type="password"
               required
@@ -80,7 +80,7 @@ export default function ResetPassword() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirm Password</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Confirm Password</label>
             <Input
               type="password"
               required
@@ -107,7 +107,7 @@ export default function ResetPassword() {
 
         <button
           onClick={() => navigate("/")}
-          className="w-full mt-4 text-sm text-gray-600 hover:text-orange-600 font-medium transition-colors"
+          className="w-full mt-4 text-sm text-gray-600 dark:text-gray-500 hover:text-orange-600 font-medium transition-colors"
         >
           ← Back to login
         </button>

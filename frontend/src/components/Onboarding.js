@@ -69,11 +69,13 @@ export default function Onboarding() {
           frequency_type: h.frequency_type, frequency_days: h.frequency_days, frequency_target: h.frequency_target
         });
       }
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       // Update user settings
       const res = await api.put("/user/settings", {
         mode,
         direct_mode_reason: directReason,
         onboarding_completed: true,
+        timezone: tz,
       });
       setUser(res.data);
     } catch (e) {
@@ -84,13 +86,13 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col max-w-lg mx-auto px-6 py-8">
+    <div className="min-h-screen bg-white dark:bg-gray-950 flex flex-col max-w-lg mx-auto px-6 py-8">
       {/* Progress dots */}
       <div className="flex gap-2 mb-8">
         {[1, 2, 3].map((s) => (
           <div
             key={s}
-            className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${s <= step ? "bg-orange-500" : "bg-gray-100"}`}
+            className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${s <= step ? "bg-orange-500" : "bg-gray-100 dark:bg-gray-800"}`}
           />
         ))}
       </div>
@@ -102,10 +104,10 @@ export default function Onboarding() {
             <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-orange-200">
               <span className="text-3xl">🔥</span>
             </div>
-            <h1 className="text-4xl font-black text-gray-900 font-chivo tracking-tight mb-3">
+            <h1 className="text-4xl font-black text-gray-900 dark:text-white font-chivo tracking-tight mb-3">
               Welcome to<br />FORGE
             </h1>
-            <p className="text-gray-500 font-manrope text-base leading-relaxed">
+            <p className="text-gray-500 dark:text-gray-500 font-manrope text-base leading-relaxed">
               This isn't a generic habit tracker. Forge studies your patterns, remembers your history,
               and gives you insights no one else can.
             </p>
@@ -122,7 +124,7 @@ export default function Onboarding() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <span className="text-gray-700 font-manrope text-sm font-medium">{item}</span>
+                <span className="text-gray-700 dark:text-gray-300 font-manrope text-sm font-medium">{item}</span>
               </div>
             ))}
           </div>
@@ -140,8 +142,8 @@ export default function Onboarding() {
       {step === 2 && (
         <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="mb-6">
-            <h2 className="text-2xl font-black text-gray-900 font-chivo mb-1">Your Habits</h2>
-            <p className="text-gray-500 text-sm font-manrope">
+            <h2 className="text-2xl font-black text-gray-900 dark:text-white font-chivo mb-1">Your Habits</h2>
+            <p className="text-gray-500 dark:text-gray-500 text-sm font-manrope">
               Add 3–5 habits. Priority determines point weight (⭐ = 1pt, ⭐⭐⭐ = 3pts daily).
             </p>
           </div>
@@ -149,16 +151,16 @@ export default function Onboarding() {
           {/* Habit list */}
           <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
             {habits.map((h) => (
-              <div key={h.id} className="flex items-center gap-2 bg-gray-50 rounded-xl p-3 border border-gray-100">
+              <div key={h.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 rounded-xl p-3 border border-gray-100 dark:border-gray-800">
                 <div className="flex gap-0.5">
                   {[1, 2, 3].map((s) => (
                     <span key={s} className={`text-sm ${s <= h.priority ? "text-orange-500" : "text-gray-200"}`}>★</span>
                   ))}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 font-manrope truncate">{h.name}</p>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 font-manrope truncate">{h.name}</p>
                   <div className="flex items-center gap-2">
-                    {h.context && <p className="text-xs text-gray-400 truncate">For: {h.context}</p>}
+                    {h.context && <p className="text-xs text-gray-400 dark:text-gray-500 truncate">For: {h.context}</p>}
                     <FrequencyBadge habit={h} />
                   </div>
                 </div>
@@ -179,16 +181,16 @@ export default function Onboarding() {
               onChange={(e) => setNewHabit({ ...newHabit, name: e.target.value })}
               onKeyDown={(e) => e.key === "Enter" && addHabit()}
               placeholder="Habit name (e.g. Morning run)"
-              className="w-full bg-white border border-orange-200 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              className="w-full bg-white dark:bg-gray-950 border border-orange-200 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-orange-400"
             />
             <input
               value={newHabit.context}
               onChange={(e) => setNewHabit({ ...newHabit, context: e.target.value })}
               placeholder="What is this for? (optional)"
-              className="w-full bg-white border border-orange-200 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              className="w-full bg-white dark:bg-gray-950 border border-orange-200 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-orange-400"
             />
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-xs text-gray-500 font-manrope">Priority:</span>
+              <span className="text-xs text-gray-500 dark:text-gray-500 font-manrope">Priority:</span>
               {[1, 2, 3].map((p) => (
                 <button
                   key={p}
@@ -196,7 +198,7 @@ export default function Onboarding() {
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                     newHabit.priority === p
                       ? "bg-orange-500 text-white"
-                      : "bg-white border border-orange-200 text-orange-400"
+                      : "bg-white dark:bg-gray-950 border border-orange-200 text-orange-400"
                   }`}
                 >
                   {"⭐".repeat(p)}
@@ -235,8 +237,8 @@ export default function Onboarding() {
       {step === 3 && (
         <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="mb-6">
-            <h2 className="text-2xl font-black text-gray-900 font-chivo mb-1">Your Coach Mode</h2>
-            <p className="text-gray-500 text-sm font-manrope">
+            <h2 className="text-2xl font-black text-gray-900 dark:text-white font-chivo mb-1">Your Coach Mode</h2>
+            <p className="text-gray-500 dark:text-gray-500 text-sm font-manrope">
               Choose how FORGE talks to you. You can change this anytime.
             </p>
           </div>
@@ -254,8 +256,8 @@ export default function Onboarding() {
                 <div className="flex items-center gap-3 mb-1">
                   <span className="text-xl">{m.icon}</span>
                   <div>
-                    <span className="font-bold font-chivo text-gray-900">{m.label}</span>
-                    <span className="text-xs text-gray-500 ml-2 font-manrope">{m.subtitle}</span>
+                    <span className="font-bold font-chivo text-gray-900 dark:text-white">{m.label}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-500 ml-2 font-manrope">{m.subtitle}</span>
                   </div>
                   {mode === m.id && (
                     <div className="ml-auto w-5 h-5 rounded-full bg-orange-500 flex items-center justify-center">
@@ -265,7 +267,7 @@ export default function Onboarding() {
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-gray-500 font-manrope leading-relaxed ml-8">{m.desc}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-500 font-manrope leading-relaxed ml-8">{m.desc}</p>
               </button>
             ))}
           </div>
@@ -280,7 +282,7 @@ export default function Onboarding() {
                 value={directReason}
                 onChange={(e) => setDirectReason(e.target.value)}
                 placeholder="e.g., I keep making excuses. I need someone to call me out..."
-                className="w-full bg-white border border-red-200 rounded-xl px-3 py-2 text-sm font-manrope resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
+                className="w-full bg-white dark:bg-gray-950 border border-red-200 rounded-xl px-3 py-2 text-sm font-manrope resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
                 rows={3}
               />
             </div>

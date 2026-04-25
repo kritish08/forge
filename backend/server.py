@@ -8,6 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from cryptography.fernet import Fernet
 from collections import defaultdict
 from jose import JWTError, jwt
@@ -23,7 +24,7 @@ load_dotenv(ROOT_DIR / ".env")
 AZURE_ENDPOINT = os.environ.get("AZURE_ENDPOINT", "https://kyrex-hub-resource.openai.azure.com/openai/v1/")
 AZURE_MODEL = os.environ.get("AZURE_MODEL", "gpt-5.2")
 AZURE_API_KEY = os.environ.get("AZURE_API_KEY", "")
-APP_URL = os.environ.get("APP_URL", "http://localhost")
+
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "")
 ALGORITHM = "HS256"
 VAPID_PRIVATE_KEY_B64 = os.environ.get("VAPID_PRIVATE_KEY", "")
@@ -53,7 +54,9 @@ logger = logging.getLogger(__name__)
 
 # Enhanced CORS Logic (Supports Local & Production simultaneously)
 DOMAIN_NAME = os.environ.get("DOMAIN_NAME", "forge.zerp.me")
+APP_URL = os.environ.get("APP_URL", f"https://{DOMAIN_NAME}" if "localhost" not in DOMAIN_NAME else "http://localhost:3000")
 CORS_ORIGINS_RAW = os.environ.get("CORS_ORIGINS", "")
+API_URL = os.environ.get("API_URL", f"https://api-{DOMAIN_NAME}" if "localhost" not in APP_URL else "http://localhost:8001")
 
 # Always allow the root production domains to prevent the override bug
 CORS_ORIGINS = [f"https://{DOMAIN_NAME}", f"https://www.{DOMAIN_NAME}", f"https://api-{DOMAIN_NAME}"]
@@ -149,6 +152,7 @@ class RegisterRequest(BaseModel):
     password: str
     name: str
     picture: str = ""
+    timezone: str = "UTC"
 
 class LoginRequest(BaseModel):
     email: str
@@ -200,6 +204,8 @@ class UserSettingsUpdate(BaseModel):
     onboarding_completed: Optional[bool] = None
     email_daily_reminder: Optional[bool] = None
     email_weekly_summary: Optional[bool] = None
+    timezone: Optional[str] = None
+    notification_rules: Optional[list] = None
 
 class PushSubscribeRequest(BaseModel):
     subscription: dict
@@ -225,6 +231,15 @@ def get_level_progress(pts: int) -> dict:
     return {"level": lvl, "total_points": pts, "current_threshold": cur,
             "next_threshold": nxt, "progress_pct": round((pts - cur) / span * 100, 1)}
 
+def get_user_today(user: dict) -> str:
+    """Get the current date string (YYYY-MM-DD) mapped to the user's timezone."""
+    tz_str = user.get("timezone", "UTC")
+    try:
+        tz = ZoneInfo(tz_str)
+    except Exception:
+        tz = timezone.utc
+    return datetime.now(tz).strftime("%Y-%m-%d")
+
 def is_habit_scheduled_today(habit: dict, weekday: int) -> bool:
     """Check if a habit is scheduled for a given ISO weekday (0=Mon, 6=Sun)."""
     ft = habit.get("frequency_type", "daily")
@@ -239,20 +254,6 @@ def is_habit_scheduled_today(habit: dict, weekday: int) -> bool:
 def is_day_scheduled(habit: dict, date_obj) -> bool:
     """Check if a specific date is a scheduled day for this habit."""
     return is_habit_scheduled_today(habit, date_obj.weekday())
-
-def compute_streak(completions: list, today_str: str) -> int:
-    """Legacy global streak: consecutive days where completions exist."""
-    if not completions:
-        return 0
-    dates = sorted(set(c["date"] for c in completions), reverse=True)
-    streak, expected = 0, today_str
-    for d in dates:
-        if d == expected:
-            streak += 1
-            expected = (datetime.strptime(expected, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-        elif d < expected:
-            break
-    return streak
 
 def compute_global_streak(all_completions: list, habits: list, today_str: str) -> int:
     """Consecutive days where ALL scheduled habits were completed.
@@ -338,15 +339,14 @@ def _compute_weekly_streak(dates_set: set, habit: dict, today_str: str) -> int:
             break
     return streak
 
-def compute_habit_adherence(habit: dict, completions: list, days: int = 14) -> int:
+def compute_habit_adherence(habit: dict, completions: list, local_now: datetime, days: int = 14) -> int:
     """Calculate what % of scheduled days the user actually completed, over N days."""
     ft = habit.get("frequency_type", "daily")
     dates_set = set(c["date"] for c in completions if c["habit_id"] == habit["habit_id"])
-    today = datetime.now(timezone.utc)
     scheduled = 0
     completed = 0
     for i in range(days):
-        d = today - timedelta(days=i)
+        d = local_now - timedelta(days=i)
         ds = d.strftime("%Y-%m-%d")
         if ft == "daily":
             scheduled += 1
@@ -364,10 +364,13 @@ def compute_habit_adherence(habit: dict, completions: list, days: int = 14) -> i
     return round(completed / max(scheduled, 1) * 100)
 
 async def check_and_award_achievements(user_id: str) -> list:
+    user = await db.users.find_one({"user_id": user_id})
+    if not user:
+        return []
     completions = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
     habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
     existing_types = {a["type"] for a in await db.achievements.find({"user_id": user_id}, {"_id": 0}).to_list(1000)}
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = get_user_today(user)
     new_ach = []
 
     def award(t, name, desc):
@@ -388,7 +391,7 @@ async def check_and_award_achievements(user_id: str) -> list:
             a = award("perfect_day", "First Perfect Day", "Completed every habit in a single day!")
             if a: new_ach.append(a)
 
-    streak = compute_streak(completions, today)
+    streak = compute_global_streak(completions, habits, today)
     if streak >= 7:
         a = award("streak_7", "7-Day Streak", "7 consecutive days of consistency!")
         if a: new_ach.append(a)
@@ -429,31 +432,38 @@ async def check_and_award_achievements(user_id: str) -> list:
 
 
 # ── Analytics helpers ───────────────────────────────────────────────────────────
-def compute_dow_patterns(completions: list, habits: list, days: int = 30) -> dict:
+def compute_dow_patterns(completions: list, habits: list, local_now: datetime, days: int = 30) -> dict:
     """Day-of-week patterns using SCHEDULED habits as denominator (not total)."""
-    today = datetime.now(timezone.utc)
     by_date = defaultdict(int)
     for c in completions:
         by_date[c["date"]] += 1
     dow_data = defaultdict(lambda: {"c": 0, "p": 0})
     for i in range(days):
-        d = today - timedelta(days=i)
+        d = local_now - timedelta(days=i)
         ds = d.strftime("%Y-%m-%d")
         weekday = d.weekday()
-        scheduled_count = sum(1 for h in habits if is_habit_scheduled_today(h, weekday))
+        scheduled_count = 0
+        for h in habits:
+            ft = h.get("frequency_type", "daily")
+            if ft == "daily": scheduled_count += 1
+            elif ft == "specific_days" and weekday in h.get("frequency_days", []): scheduled_count += 1
+            elif ft == "times_per_week": scheduled_count += h.get("frequency_target", 1) / 7.0
         dow_data[weekday]["c"] += by_date.get(ds, 0)
         dow_data[weekday]["p"] += max(scheduled_count, 1)
     names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     return {names[k]: round(v["c"] / max(v["p"], 1) * 100, 1) for k, v in dow_data.items()}
 
-def compute_time_patterns(completions: list) -> dict:
+def compute_time_patterns(completions: list, tz: timezone) -> dict:
     buckets = defaultdict(int)
     for c in completions:
         try:
             ts = c.get("completed_at", "")
             if isinstance(ts, str):
-                ts = datetime.fromisoformat(ts)
-            h = ts.hour
+                ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            local_ts = ts.astimezone(tz)
+            h = local_ts.hour
             if h < 9: buckets["early"] += 1
             elif h < 12: buckets["morning"] += 1
             elif h < 17: buckets["afternoon"] += 1
@@ -553,10 +563,31 @@ async def send_push(user: dict, title: str, body: str, url: str = "/"):
 
 # ── Scheduled jobs ──────────────────────────────────────────────────────────────
 async def daily_reminder_job():
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    today_weekday = datetime.now(timezone.utc).weekday()
+    utc_now = datetime.now(timezone.utc)
     users = await db.users.find({"onboarding_completed": True}, {"_id": 0}).to_list(10000)
     for user in users:
+        tz_str = user.get("timezone", "UTC")
+        try:
+            tz = ZoneInfo(tz_str)
+        except Exception:
+            tz = timezone.utc
+            
+        local_now = utc_now.astimezone(tz)
+        local_time = local_now.strftime("%H:%M")
+        local_weekday = local_now.weekday()
+        
+        rules = user.get("notification_rules", [{"days": [0,1,2,3,4,5,6], "time": "20:00"}])
+        should_notify = False
+        for r in rules:
+            if local_weekday in r.get("days", []) and r.get("time", "20:00") == local_time:
+                should_notify = True
+                break
+                
+        if not should_notify:
+            continue
+
+        today = local_now.strftime("%Y-%m-%d")
+        today_weekday = local_weekday
         user_id = user["user_id"]
         habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
         if not habits:
@@ -587,7 +618,7 @@ async def daily_reminder_job():
             streak = compute_global_streak(all_comps, all_habits, today)
             
             unsub_token = create_token(user_id, "unsubscribe", 60 * 24 * 365)
-            unsub_link = f"{APP_URL}/api/notifications/unsubscribe?token={unsub_token}&type=daily"
+            unsub_link = f"{API_URL}/api/notifications/unsubscribe?token={unsub_token}&type=daily"
             
             html = f"""
             <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px">
@@ -605,11 +636,25 @@ async def daily_reminder_job():
 
 
 async def weekly_summary_job():
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    start_7 = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+    utc_now = datetime.now(timezone.utc)
     users = await db.users.find({"onboarding_completed": True, "email_weekly_summary": True},
                                  {"_id": 0}).to_list(10000)
     for user in users:
+        tz_str = user.get("timezone", "UTC")
+        try:
+            tz = ZoneInfo(tz_str)
+        except Exception:
+            tz = timezone.utc
+            
+        local_now = utc_now.astimezone(tz)
+        local_time = local_now.strftime("%H:%M")
+        local_weekday = local_now.weekday()
+        
+        if local_weekday != 6 or local_time != "09:00":
+            continue
+
+        today = local_now.strftime("%Y-%m-%d")
+        start_7 = (local_now - timedelta(days=7)).strftime("%Y-%m-%d")
         user_id = user["user_id"]
         week_comps = await db.completions.find({"user_id": user_id, "date": {"$gte": start_7}}, {"_id": 0}).to_list(10000)
         habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
@@ -619,10 +664,14 @@ async def weekly_summary_job():
 
         # Schedule-aware consistency rate: scheduled completions over the past 7 days
         scheduled_possible_7 = 0
-        for i in range(7):
-            d7 = datetime.now(timezone.utc) - timedelta(days=i)
-            weekday7 = d7.weekday()
-            scheduled_possible_7 += sum(1 for h in habits if is_habit_scheduled_today(h, weekday7))
+        for h in habits:
+            ft = h.get("frequency_type", "daily")
+            if ft == "daily":
+                scheduled_possible_7 += 7
+            elif ft == "specific_days":
+                scheduled_possible_7 += len(h.get("frequency_days", []))
+            elif ft == "times_per_week":
+                scheduled_possible_7 += h.get("frequency_target", 1)
         rate = round(len(week_comps) / max(scheduled_possible_7, 1) * 100)
         streak = compute_global_streak(all_comps, habits, today)
         total_pts = sum(c.get("points_earned", 1) for c in all_comps)
@@ -631,7 +680,7 @@ async def weekly_summary_job():
         color = "#22C55E" if rate >= 75 else ("#F59E0B" if rate >= 50 else "#EF4444")
         
         unsub_token = create_token(user_id, "unsubscribe", 60 * 24 * 365) # 1 year validity
-        unsub_link = f"{APP_URL}/api/notifications/unsubscribe?token={unsub_token}&type=weekly"
+        unsub_link = f"{API_URL}/api/notifications/unsubscribe?token={unsub_token}&type=weekly"
         
         html = f"""
         <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px">
@@ -751,7 +800,16 @@ async def generate_ai_insight(user: dict, context: dict, reflection: str = "") -
             freq_label = "/".join([day_names[d] for d in sorted(h.get("frequency_days", []))])
         else:
             freq_label = f"{h.get('frequency_target', 1)}x/week"
-        adherence = compute_habit_adherence(h, all_comps, 14)
+        
+        # Calculate local_now based on context
+        tz_str = user.get("timezone", "UTC")
+        try:
+            tz = ZoneInfo(tz_str)
+        except Exception:
+            tz = timezone.utc
+        local_now = datetime.now(tz)
+        
+        adherence = compute_habit_adherence(h, all_comps, local_now, 14)
         schedule_lines.append(f"- {h['name']}: {freq_label} — Adherence: {adherence}%")
     schedule_str = "\n".join(schedule_lines) if schedule_lines else "No schedule data"
 
@@ -807,6 +865,8 @@ async def register(data: RegisterRequest, response: Response, background_tasks: 
         "mode": "supportive", "direct_mode_reason": "",
         "onboarding_completed": False, "push_subscription": None,
         "email_daily_reminder": True, "email_weekly_summary": True,
+        "timezone": data.timezone,
+        "notification_rules": [{"days": [0,1,2,3,4,5,6], "time": "20:00"}],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user)
@@ -1086,7 +1146,7 @@ async def get_completions(date: Optional[str] = None, habit_id: Optional[str] = 
 
 @api_router.post("/completions")
 async def create_completion(data: CompletionCreate, current_user=Depends(get_current_user)):
-    target_date = data.date if data.date else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    target_date = data.date if data.date else get_user_today(current_user)
     existing = await db.completions.find_one(
         {"user_id": current_user["user_id"], "habit_id": data.habit_id, "date": target_date}, {"_id": 0})
     if existing:
@@ -1114,12 +1174,12 @@ async def delete_completion(completion_id: str, current_user=Depends(get_current
 # ── Mood Routes ─────────────────────────────────────────────────────────────────
 @api_router.get("/moods/today")
 async def get_today_mood(current_user=Depends(get_current_user)):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = get_user_today(current_user)
     return await db.moods.find_one({"user_id": current_user["user_id"], "date": today}, {"_id": 0}) or {}
 
 @api_router.post("/moods")
 async def log_mood(data: MoodCreate, current_user=Depends(get_current_user)):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = get_user_today(current_user)
     user_id = current_user["user_id"]
     mood = {"mood_id": f"mood_{uuid.uuid4().hex[:12]}", "user_id": user_id, "date": today,
             "rating": max(1, min(5, data.rating)), "note": data.note, "gratitude": data.gratitude,
@@ -1141,7 +1201,12 @@ async def log_mood(data: MoodCreate, current_user=Depends(get_current_user)):
 
 @api_router.get("/moods")
 async def get_moods(days: int = 30, current_user=Depends(get_current_user)):
-    start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    tz_str = current_user.get("timezone", "UTC")
+    try:
+        tz = ZoneInfo(tz_str)
+    except Exception:
+        tz = timezone.utc
+    start = (datetime.now(tz) - timedelta(days=days)).strftime("%Y-%m-%d")
     return await db.moods.find({"user_id": current_user["user_id"], "date": {"$gte": start}},
                                 {"_id": 0}).sort("date", 1).to_list(100)
 
@@ -1150,9 +1215,16 @@ async def get_moods(days: int = 30, current_user=Depends(get_current_user)):
 @api_router.get("/analytics/stats")
 async def get_stats(current_user=Depends(get_current_user)):
     user_id = current_user["user_id"]
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    today_weekday = datetime.now(timezone.utc).weekday()
-    start_14 = (datetime.now(timezone.utc) - timedelta(days=14)).strftime("%Y-%m-%d")
+    tz_str = current_user.get("timezone", "UTC")
+    try:
+        tz = ZoneInfo(tz_str)
+    except Exception:
+        tz = timezone.utc
+        
+    local_now = datetime.now(tz)
+    today = local_now.strftime("%Y-%m-%d")
+    today_weekday = local_now.weekday()
+    start_14 = (local_now - timedelta(days=14)).strftime("%Y-%m-%d")
 
     all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
     habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
@@ -1176,17 +1248,21 @@ async def get_stats(current_user=Depends(get_current_user)):
     
     # Completion rate: scheduled completions over 14 days
     scheduled_possible = 0
-    for i in range(14):
-        d = datetime.now(timezone.utc) - timedelta(days=i)
-        weekday = d.weekday()
-        scheduled_possible += sum(1 for h in habits if is_habit_scheduled_today(h, weekday))
+    for h in habits:
+        ft = h.get("frequency_type", "daily")
+        if ft == "daily":
+            scheduled_possible += 14
+        elif ft == "specific_days":
+            scheduled_possible += len(h.get("frequency_days", [])) * 2
+        elif ft == "times_per_week":
+            scheduled_possible += h.get("frequency_target", 1) * 2
     rate = len(recent_comps) / max(scheduled_possible, 1) * 100 if habits else 0
 
     try:
-        created_dt = datetime.fromisoformat(current_user.get("created_at", datetime.now(timezone.utc).isoformat()).replace("Z", "+00:00"))
+        created_dt = datetime.fromisoformat(current_user.get("created_at", local_now.isoformat()).replace("Z", "+00:00"))
         if created_dt.tzinfo is None:
             created_dt = created_dt.replace(tzinfo=timezone.utc)
-        days_using = (datetime.now(timezone.utc) - created_dt).days
+        days_using = (local_now.date() - created_dt.astimezone(tz).date()).days
     except Exception:
         days_using = 0
 
@@ -1202,23 +1278,34 @@ async def get_stats(current_user=Depends(get_current_user)):
 @api_router.get("/analytics/heatmap")
 async def get_heatmap(current_user=Depends(get_current_user)):
     user_id = current_user["user_id"]
-    today = datetime.now(timezone.utc)
-    start = (today - timedelta(days=89)).strftime("%Y-%m-%d")
+    tz_str = current_user.get("timezone", "UTC")
+    try:
+        tz = ZoneInfo(tz_str)
+    except Exception:
+        tz = timezone.utc
+    local_now = datetime.now(tz)
+    start = (local_now - timedelta(days=89)).strftime("%Y-%m-%d")
     comps = await db.completions.find({"user_id": user_id, "date": {"$gte": start}}, {"_id": 0}).to_list(10000)
     habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
     n_habits = max(len(habits), 1)
     by_date = defaultdict(int)
     for c in comps:
         by_date[c["date"]] += 1
-    return {(today - timedelta(days=i)).strftime("%Y-%m-%d"):
-            min(1.0, round(by_date.get((today - timedelta(days=i)).strftime("%Y-%m-%d"), 0) / n_habits, 2))
+    return {(local_now - timedelta(days=i)).strftime("%Y-%m-%d"):
+            min(1.0, round(by_date.get((local_now - timedelta(days=i)).strftime("%Y-%m-%d"), 0) / n_habits, 2))
             for i in range(90)}
 
 
 @api_router.get("/analytics/patterns")
 async def get_patterns(current_user=Depends(get_current_user)):
     user_id = current_user["user_id"]
-    start_30 = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+    tz_str = current_user.get("timezone", "UTC")
+    try:
+        tz = ZoneInfo(tz_str)
+    except Exception:
+        tz = timezone.utc
+    local_now = datetime.now(tz)
+    start_30 = (local_now - timedelta(days=30)).strftime("%Y-%m-%d")
     comps = await db.completions.find({"user_id": user_id, "date": {"$gte": start_30}}, {"_id": 0}).to_list(10000)
     all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
     habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
@@ -1229,7 +1316,7 @@ async def get_patterns(current_user=Depends(get_current_user)):
     n_habits = max(len(habits), 1)
     score_series = []
     for i in range(29, -1, -1):
-        d = datetime.now(timezone.utc) - timedelta(days=i)
+        d = local_now - timedelta(days=i)
         ds = d.strftime("%Y-%m-%d")
         n = by_date.get(ds, 0)
         score_series.append({"date": ds, "completed": n, "max": n_habits, "pct": round(n / n_habits * 100, 1)})
@@ -1241,8 +1328,8 @@ async def get_patterns(current_user=Depends(get_current_user)):
     for h in habits:
         priority_stats[h.get("priority", 1)]["p"] += 30
 
-    return {"dow_patterns": compute_dow_patterns(all_comps, habits),
-            "time_patterns": compute_time_patterns(all_comps),
+    return {"dow_patterns": compute_dow_patterns(all_comps, habits, local_now),
+            "time_patterns": compute_time_patterns(all_comps, tz),
             "score_series": score_series,
             "priority_breakdown": {f"p{p}": round(d["c"] / max(d["p"], 1) * 100, 1) for p, d in priority_stats.items()}}
 
@@ -1251,9 +1338,14 @@ async def get_patterns(current_user=Depends(get_current_user)):
 @api_router.post("/ai/insight")
 async def generate_insight(data: InsightRequest, current_user=Depends(get_current_user)):
     user_id = current_user["user_id"]
-    today = datetime.now(timezone.utc)
-    start_14 = (today - timedelta(days=14)).strftime("%Y-%m-%d")
-    start_7 = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+    tz_str = current_user.get("timezone", "UTC")
+    try:
+        tz = ZoneInfo(tz_str)
+    except Exception:
+        tz = timezone.utc
+    local_now = datetime.now(tz)
+    start_14 = (local_now - timedelta(days=14)).strftime("%Y-%m-%d")
+    start_7 = (local_now - timedelta(days=7)).strftime("%Y-%m-%d")
 
     comps = await db.completions.find({"user_id": user_id, "date": {"$gte": start_14}}, {"_id": 0}).to_list(10000)
     all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
@@ -1264,20 +1356,20 @@ async def generate_insight(data: InsightRequest, current_user=Depends(get_curren
 
     n_habits = max(len(habits), 1)
     rate = len(comps) / (n_habits * 14) * 100 if habits else 0
-    streak = compute_global_streak(all_comps, habits, today.strftime("%Y-%m-%d"))
+    streak = compute_global_streak(all_comps, habits, local_now.strftime("%Y-%m-%d"))
 
     try:
-        created_dt = datetime.fromisoformat(current_user.get("created_at", today.isoformat()).replace("Z", "+00:00"))
+        created_dt = datetime.fromisoformat(current_user.get("created_at", local_now.isoformat()).replace("Z", "+00:00"))
         if created_dt.tzinfo is None:
             created_dt = created_dt.replace(tzinfo=timezone.utc)
-        days_using = (today - created_dt).days
+        days_using = (local_now.date() - created_dt.astimezone(tz).date()).days
     except Exception:
         days_using = 0
 
     context = {"habits": habits, "all_completions": all_comps, "completion_rate": rate,
                "total_checkins": len(all_comps), "days_using": days_using, "streak": streak,
-               "dow_patterns": compute_dow_patterns(all_comps, habits),
-               "time_patterns": compute_time_patterns(all_comps), "past_insights": past,
+               "dow_patterns": compute_dow_patterns(all_comps, habits, local_now),
+               "time_patterns": compute_time_patterns(all_comps, tz), "past_insights": past,
                "moods": moods, "achievements": achievements}
 
     insight_text = await generate_ai_insight(current_user, context, data.reflection)
@@ -1389,8 +1481,8 @@ app.include_router(api_router)
 
 @app.on_event("startup")
 async def startup():
-    scheduler.add_job(daily_reminder_job, "cron", hour=20, minute=0, id="daily_reminder")
-    scheduler.add_job(weekly_summary_job, "cron", day_of_week="sun", hour=9, minute=0, id="weekly_summary")
+    scheduler.add_job(daily_reminder_job, "cron", minute="*", id="daily_reminder")
+    scheduler.add_job(weekly_summary_job, "cron", minute="*", id="weekly_summary")
     scheduler.start()
     logger.info("FORGE backend started — scheduler running")
 

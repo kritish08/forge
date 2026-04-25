@@ -15,7 +15,7 @@ function ForgeLogo({ size = 10, textSize = "text-2xl" }) {
                     <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z" />
                 </svg>
             </div>
-            <span className={`${textSize} font-black text-gray-900 font-chivo tracking-tight`}>
+            <span className={`${textSize} font-black text-gray-900 dark:text-white font-chivo tracking-tight`}>
                 FORGE
             </span>
         </div>
@@ -91,6 +91,8 @@ const testimonials = [
     },
 ];
 
+import ThemeToggle from "./ThemeToggle";
+
 export default function Landing({ onGetStarted }) {
     const navigate = useNavigate();
 
@@ -103,21 +105,22 @@ export default function Landing({ onGetStarted }) {
     };
 
     return (
-        <div className="min-h-screen bg-white font-manrope">
+        <div className="min-h-screen bg-white dark:bg-gray-950 font-manrope">
             {/* ── NAV ─────────────────────────────────────────── */}
-            <nav className="fixed top-0 inset-x-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+            <nav className="fixed top-0 inset-x-0 z-50 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800">
                 <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
                     <ForgeLogo size={8} textSize="text-xl" />
                     <div className="flex items-center gap-3">
+                        <ThemeToggle />
                         <button
                             onClick={() => handleCTA(false)}
-                            className="text-sm text-gray-600 font-chivo font-bold hover:text-orange-600 transition-colors"
+                            className="text-sm text-gray-600 dark:text-gray-400 font-chivo font-bold hover:text-orange-600 transition-colors"
                         >
                             Sign In
                         </button>
                         <button
                             onClick={() => handleCTA(true)}
-                            className="px-4 py-2 bg-gray-900 text-white text-sm font-chivo font-bold rounded-xl hover:bg-orange-500 transition-colors active:scale-95"
+                            className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-chivo font-bold rounded-xl hover:bg-orange-500 dark:hover:bg-orange-500 dark:hover:text-white transition-colors active:scale-95"
                         >
                             Get Started →
                         </button>
@@ -140,7 +143,7 @@ export default function Landing({ onGetStarted }) {
                     </div>
 
                     {/* Headline */}
-                    <h1 className="text-5xl sm:text-6xl font-black text-gray-900 font-chivo leading-tight tracking-tight mb-6">
+                    <h1 className="text-5xl sm:text-6xl font-black text-gray-900 dark:text-white font-chivo leading-tight tracking-tight mb-6">
                         Stop tracking habits.
                         <br />
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600">
@@ -148,7 +151,7 @@ export default function Landing({ onGetStarted }) {
                         </span>
                     </h1>
 
-                    <p className="text-lg text-gray-500 font-manrope leading-relaxed mb-10 max-w-2xl mx-auto">
+                    <p className="text-lg text-gray-500 dark:text-gray-500 font-manrope leading-relaxed mb-10 max-w-2xl mx-auto">
                         FORGE doesn't just count your check-ins — it reads your patterns, learns your rhythm, and
                         gives you the exact insight you need to turn inconsistency into identity.
                     </p>
@@ -162,14 +165,14 @@ export default function Landing({ onGetStarted }) {
                         </button>
                         <button
                             onClick={() => handleCTA(false)}
-                            className="px-8 py-4 bg-gray-50 border border-gray-200 text-gray-900 font-chivo font-bold text-base rounded-2xl hover:bg-gray-100 active:scale-95 transition-all"
+                            className="px-8 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white font-chivo font-bold text-base rounded-2xl hover:bg-gray-100 dark:hover:bg-gray-800 dark:bg-gray-800 active:scale-95 transition-all"
                         >
                             Sign In
                         </button>
                     </div>
 
                     {/* Social proof row */}
-                    <div className="mt-8 flex items-center justify-center gap-6 text-sm text-gray-400 font-manrope">
+                    <div className="mt-8 flex items-center justify-center gap-6 text-sm text-gray-400 dark:text-gray-500 font-manrope">
                         <span>✅ Free to start</span>
                         <span>✅ No ads, ever</span>
                         <span>✅ AI-first insights</span>
@@ -178,7 +181,7 @@ export default function Landing({ onGetStarted }) {
 
                 {/* Mock App Preview */}
                 <div className="max-w-sm mx-auto mt-16">
-                    <div className="bg-white rounded-3xl shadow-2xl shadow-gray-200 border border-gray-100 overflow-hidden">
+                    <div className="bg-white dark:bg-gray-950 rounded-3xl shadow-2xl shadow-gray-200 border border-gray-100 dark:border-gray-800 overflow-hidden">
                         {/* Phone status bar */}
                         <div className="bg-gray-900 px-6 py-4 flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -196,16 +199,16 @@ export default function Landing({ onGetStarted }) {
                             </div>
                         </div>
                         {/* Mock dashboard */}
-                        <div className="p-5 bg-gray-50 space-y-3">
-                            <div className="text-xs text-gray-400 font-chivo uppercase tracking-widest">Today — March 5</div>
+                        <div className="p-5 bg-gray-50 dark:bg-gray-900 space-y-3">
+                            <div className="text-xs text-gray-400 dark:text-gray-500 font-chivo uppercase tracking-widest">Today — March 5</div>
                             <div className="flex gap-2">
-                                <div className="flex-1 bg-white rounded-xl border border-gray-100 p-3">
-                                    <div className="text-2xl font-black text-gray-900 font-chivo">12🔥</div>
-                                    <div className="text-xs text-gray-400 mt-0.5">Day streak</div>
+                                <div className="flex-1 bg-white dark:bg-gray-950 rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+                                    <div className="text-2xl font-black text-gray-900 dark:text-white font-chivo">12🔥</div>
+                                    <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Day streak</div>
                                 </div>
-                                <div className="flex-1 bg-white rounded-xl border border-gray-100 p-3">
+                                <div className="flex-1 bg-white dark:bg-gray-950 rounded-xl border border-gray-100 dark:border-gray-800 p-3">
                                     <div className="text-2xl font-black text-orange-500 font-chivo">3/4</div>
-                                    <div className="text-xs text-gray-400 mt-0.5">Done today</div>
+                                    <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Done today</div>
                                 </div>
                             </div>
                             {[
@@ -216,7 +219,7 @@ export default function Landing({ onGetStarted }) {
                             ].map((h) => (
                                 <div
                                     key={h.name}
-                                    className={`flex items-center gap-3 bg-white rounded-xl border p-3 ${h.done ? "border-green-100" : "border-orange-100"
+                                    className={`flex items-center gap-3 bg-white dark:bg-gray-950 rounded-xl border p-3 ${h.done ? "border-green-100" : "border-orange-100"
                                         }`}
                                 >
                                     <div
@@ -233,7 +236,7 @@ export default function Landing({ onGetStarted }) {
                                             <span className="text-white text-xs font-bold">!</span>
                                         )}
                                     </div>
-                                    <span className={`text-sm font-manrope font-medium flex-1 ${h.done ? "text-gray-400 line-through" : "text-gray-800"}`}>
+                                    <span className={`text-sm font-manrope font-medium flex-1 ${h.done ? "text-gray-400 dark:text-gray-500 line-through" : "text-gray-800 dark:text-gray-200"}`}>
                                         {h.name}
                                     </span>
                                     <span className="text-xs text-orange-400">{"★".repeat(h.stars)}</span>
@@ -254,7 +257,7 @@ export default function Landing({ onGetStarted }) {
                                     {s.value}
                                     {s.suffix}
                                 </div>
-                                <p className="text-gray-400 text-sm font-manrope leading-relaxed">{s.label}</p>
+                                <p className="text-gray-400 dark:text-gray-500 text-sm font-manrope leading-relaxed">{s.label}</p>
                             </div>
                         ))}
                     </div>
@@ -268,10 +271,10 @@ export default function Landing({ onGetStarted }) {
                         <span className="text-orange-500 text-xs font-chivo font-bold tracking-widest uppercase">
                             Features
                         </span>
-                        <h2 className="text-4xl font-black text-gray-900 font-chivo mt-3 leading-tight">
+                        <h2 className="text-4xl font-black text-gray-900 dark:text-white font-chivo mt-3 leading-tight">
                             Built different. Because you are.
                         </h2>
-                        <p className="text-gray-500 mt-3 max-w-xl mx-auto font-manrope leading-relaxed">
+                        <p className="text-gray-500 dark:text-gray-500 mt-3 max-w-xl mx-auto font-manrope leading-relaxed">
                             Every feature in FORGE was designed around one principle: insight beats motivation.
                         </p>
                     </div>
@@ -280,13 +283,13 @@ export default function Landing({ onGetStarted }) {
                         {features.map((f, i) => (
                             <div
                                 key={f.title}
-                                className="group bg-white rounded-2xl border border-gray-100 p-6 hover:border-orange-200 hover:shadow-lg hover:shadow-orange-50 transition-all"
+                                className="group bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 hover:border-orange-200 hover:shadow-lg hover:shadow-orange-50 transition-all"
                             >
                                 <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center text-2xl mb-4 group-hover:bg-orange-100 transition-colors">
                                     {f.icon}
                                 </div>
-                                <h3 className="font-bold font-chivo text-gray-900 text-base mb-2">{f.title}</h3>
-                                <p className="text-sm text-gray-500 font-manrope leading-relaxed">{f.description}</p>
+                                <h3 className="font-bold font-chivo text-gray-900 dark:text-white text-base mb-2">{f.title}</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-500 font-manrope leading-relaxed">{f.description}</p>
                             </div>
                         ))}
                     </div>
@@ -300,7 +303,7 @@ export default function Landing({ onGetStarted }) {
                         <span className="text-orange-500 text-xs font-chivo font-bold tracking-widest uppercase">
                             How It Works
                         </span>
-                        <h2 className="text-4xl font-black text-gray-900 font-chivo mt-3">
+                        <h2 className="text-4xl font-black text-gray-900 dark:text-white font-chivo mt-3">
                             Three steps to clarity
                         </h2>
                     </div>
@@ -322,10 +325,10 @@ export default function Landing({ onGetStarted }) {
                                 desc: "FORGE's AI studies 14 days of your data and tells you exactly what's working, what's not, and why — in plain language.",
                             },
                         ].map((item) => (
-                            <div key={item.step} className="bg-white rounded-2xl p-6 shadow-sm border border-orange-100">
+                            <div key={item.step} className="bg-white dark:bg-gray-950 rounded-2xl p-6 shadow-sm border border-orange-100">
                                 <div className="text-4xl font-black text-orange-200 font-chivo mb-4">{item.step}</div>
-                                <h3 className="font-bold font-chivo text-gray-900 mb-2">{item.title}</h3>
-                                <p className="text-sm text-gray-500 font-manrope leading-relaxed">{item.desc}</p>
+                                <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-2">{item.title}</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-500 font-manrope leading-relaxed">{item.desc}</p>
                             </div>
                         ))}
                     </div>
@@ -339,14 +342,14 @@ export default function Landing({ onGetStarted }) {
                         <span className="text-orange-500 text-xs font-chivo font-bold tracking-widest uppercase">
                             Testimonials
                         </span>
-                        <h2 className="text-4xl font-black text-gray-900 font-chivo mt-3">
+                        <h2 className="text-4xl font-black text-gray-900 dark:text-white font-chivo mt-3">
                             Real people. Real patterns.
                         </h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                         {testimonials.map((t) => (
-                            <div key={t.name} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-                                <p className="text-sm text-gray-600 font-manrope leading-relaxed italic mb-5">
+                            <div key={t.name} className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 shadow-sm">
+                                <p className="text-sm text-gray-600 dark:text-gray-500 font-manrope leading-relaxed italic mb-5">
                                     "{t.quote}"
                                 </p>
                                 <div className="flex items-center gap-3">
@@ -354,8 +357,8 @@ export default function Landing({ onGetStarted }) {
                                         {t.avatar}
                                     </div>
                                     <div>
-                                        <p className="text-sm font-bold text-gray-900 font-chivo">{t.name}</p>
-                                        <p className="text-xs text-gray-400 font-manrope">{t.role}</p>
+                                        <p className="text-sm font-bold text-gray-900 dark:text-white font-chivo">{t.name}</p>
+                                        <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope">{t.role}</p>
                                     </div>
                                 </div>
                             </div>
@@ -380,7 +383,7 @@ export default function Landing({ onGetStarted }) {
                     <h2 className="text-4xl font-black text-white font-chivo leading-tight mb-4">
                         Ready to forge your identity?
                     </h2>
-                    <p className="text-gray-400 font-manrope leading-relaxed mb-8">
+                    <p className="text-gray-400 dark:text-gray-500 font-manrope leading-relaxed mb-8">
                         Consistency forged in fire. Not motivation — data.
                     </p>
                     <button
@@ -402,10 +405,10 @@ export default function Landing({ onGetStarted }) {
                     </div>
                     <span className="text-white font-chivo font-bold text-sm">FORGE</span>
                 </div>
-                <p className="text-gray-600 text-xs font-manrope">
+                <p className="text-gray-600 dark:text-gray-500 text-xs font-manrope">
                     Consistency forged in fire. Habits take 66 days on average — not 21.
                 </p>
-                <p className="text-gray-700 text-xs mt-2 font-manrope">
+                <p className="text-gray-700 dark:text-gray-300 text-xs mt-2 font-manrope">
                     © {new Date().getFullYear()} FORGE. All rights reserved.
                 </p>
             </footer>

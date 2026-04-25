@@ -13,15 +13,17 @@ import Settings from "./components/Settings";
 import BottomNav from "./components/BottomNav";
 import { Toaster } from "sonner";
 
+import { ThemeProvider } from "./context/ThemeContext";
+
 function AppRouter() {
   const { user, loading } = useAuth();
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen bg-white dark:bg-gray-950 flex items-center justify-center transition-colors">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-400 font-manrope tracking-widest uppercase">Loading FORGE...</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 font-manrope tracking-widest uppercase">Loading FORGE...</p>
         </div>
       </div>
     );
@@ -55,10 +57,12 @@ function AppRouter() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <AppRouter />
-        <Toaster position="top-center" richColors />
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppRouter />
+          <Toaster position="top-center" richColors theme="system" />
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

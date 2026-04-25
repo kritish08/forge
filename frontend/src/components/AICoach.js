@@ -93,17 +93,17 @@ export default function AICoach() {
   const phase = getPhaseText();
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-6 pt-12 pb-4 sticky top-0 z-10">
+      <div className="bg-white dark:bg-gray-950 border-b border-gray-100 dark:border-gray-800 px-6 pt-12 pb-4 sticky top-0 z-10">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-black text-gray-900 font-chivo">AI Coach</h1>
+            <h1 className="text-2xl font-black text-gray-900 dark:text-white font-chivo">AI Coach</h1>
             <div className="flex items-center gap-2 mt-1">
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${modeConfig.color}`}>
                 {modeConfig.icon} {modeConfig.label}
               </span>
-              <span className="text-xs text-gray-400 font-manrope">{phase.phase}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500 font-manrope">{phase.phase}</span>
             </div>
           </div>
           {/* FORGE brand mark */}
@@ -113,15 +113,15 @@ export default function AICoach() {
                 <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z" />
               </svg>
             </div>
-            <span className="text-sm font-black text-gray-900 font-chivo tracking-tight">FORGE</span>
+            <span className="text-sm font-black text-gray-900 dark:text-white font-chivo tracking-tight">FORGE</span>
           </div>
         </div>
       </div>
 
       <div className="px-6 pt-5 space-y-5">
         {/* Mode selector */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-400 font-manrope uppercase tracking-widest mb-3">Coach Mode</p>
+        <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-4">
+          <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope uppercase tracking-widest mb-3">Coach Mode</p>
           <div className="flex gap-2">
             {Object.entries(MODE_CONFIG).map(([id, cfg]) => (
               <button
@@ -142,8 +142,8 @@ export default function AICoach() {
             </div>
           )}
           {!user?.has_api_key && (
-            <div className="mt-3 bg-orange-50 rounded-xl p-3 border border-orange-100">
-              <p className="text-xs text-orange-700 font-manrope flex items-start gap-1.5">
+            <div className="mt-3 bg-orange-50 dark:bg-orange-950/30 border border-orange-100 dark:border-orange-900/50 rounded-xl p-3">
+              <p className="text-xs text-orange-700 dark:text-orange-400 font-manrope flex items-start gap-1.5">
                 <span className="text-orange-500 mt-0.5">⚠️</span>
                 <span>
                   The FORGE server is currently missing its AI configuration.
@@ -155,26 +155,26 @@ export default function AICoach() {
         </div>
 
         {/* Phase progress */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
+        <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-4">
           <div className="flex justify-between items-center mb-2">
-            <p className="text-sm font-bold font-chivo text-gray-900">{phase.phase}</p>
-            <span className="text-xs text-gray-400 font-manrope">{phase.desc}</span>
+            <p className="text-sm font-bold font-chivo text-gray-900 dark:text-white">{phase.phase}</p>
+            <span className="text-xs text-gray-400 dark:text-gray-500 font-manrope">{phase.desc}</span>
           </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-orange-400 to-orange-600 rounded-full transition-all duration-700"
               style={{ width: `${Math.min(100, (stats?.total_checkins || 0) / 50 * 100)}%` }}
             />
           </div>
-          <p className="text-xs text-gray-400 font-manrope mt-1">
+          <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mt-1">
             At 50+ check-ins, FORGE unlocks deep pattern analysis
           </p>
         </div>
 
         {/* Generate insight */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <h3 className="font-bold font-chivo text-gray-900 mb-1">Generate Insight</h3>
-          <p className="text-xs text-gray-400 font-manrope mb-4">
+        <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
+          <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">Generate Insight</h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4">
             Add a reflection (optional) and FORGE will analyze your patterns.
           </p>
           <textarea
@@ -182,7 +182,7 @@ export default function AICoach() {
             value={reflection}
             onChange={(e) => setReflection(e.target.value)}
             placeholder="What's been working? What hasn't? Be honest..."
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-manrope resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 mb-4"
+            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-manrope resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 mb-4"
             rows={3}
           />
           <button
@@ -231,27 +231,27 @@ export default function AICoach() {
 
         {/* Past insights */}
         {insights.filter((i) => i !== latestInsight).length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="font-bold font-chivo text-gray-900">Past Insights</h3>
-              <p className="text-xs text-gray-400 font-manrope">FORGE remembers what it told you</p>
+          <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+              <h3 className="font-bold font-chivo text-gray-900 dark:text-white">Past Insights</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope">FORGE remembers what it told you</p>
             </div>
-            <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+            <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-96 overflow-y-auto">
               {insights.filter((i) => i !== latestInsight).slice(0, 10).map((insight) => (
                 <div key={insight.insight_id} data-testid="past-insight-item" className="px-5 py-4">
                   <div className="flex justify-between items-center mb-2">
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${MODE_CONFIG[insight.tone]?.color || "text-gray-500 bg-gray-50 border-gray-200"}`}>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${MODE_CONFIG[insight.tone]?.color || "text-gray-500 dark:text-gray-500 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700"}`}>
                       {MODE_CONFIG[insight.tone]?.label || insight.tone}
                     </span>
-                    <span className="text-xs text-gray-400 font-manrope">
+                    <span className="text-xs text-gray-400 dark:text-gray-500 font-manrope">
                       {new Date(insight.created_at).toLocaleDateString()}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-600 font-manrope leading-relaxed">
+                  <p className="text-sm text-gray-600 dark:text-gray-500 font-manrope leading-relaxed">
                     <ReactMarkdown>{insight.content}</ReactMarkdown>
                   </p>
                   {insight.reflection && (
-                    <p className="text-xs text-gray-400 font-manrope mt-2 italic">
+                    <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mt-2 italic">
                       Your note: "{insight.reflection}"
                     </p>
                   )}
@@ -265,13 +265,13 @@ export default function AICoach() {
       {/* Direct mode activation modal */}
       {showDirectModal && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-end justify-center">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 animate-in slide-in-from-bottom-4 duration-300">
-            <div className="w-12 h-1 bg-gray-200 rounded-full mx-auto mb-6" />
+          <div className="bg-white dark:bg-gray-950 w-full max-w-lg rounded-t-3xl p-6 animate-in slide-in-from-bottom-4 duration-300">
+            <div className="w-12 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-6" />
             <div className="flex items-center gap-3 mb-4">
               <span className="text-3xl">⚡</span>
               <div>
-                <h3 className="font-black font-chivo text-gray-900 text-lg">Activate Direct Mode</h3>
-                <p className="text-sm text-gray-500 font-manrope">This will be brutally honest. No comfort.</p>
+                <h3 className="font-black font-chivo text-gray-900 dark:text-white text-lg">Activate Direct Mode</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-500 font-manrope">This will be brutally honest. No comfort.</p>
               </div>
             </div>
             <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4">
@@ -285,13 +285,13 @@ export default function AICoach() {
               value={directReason}
               onChange={(e) => setDirectReason(e.target.value)}
               placeholder="e.g., I keep making excuses. I need someone to call me out ruthlessly..."
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-manrope resize-none focus:outline-none focus:ring-2 focus:ring-red-300 mb-4"
+              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-manrope resize-none focus:outline-none focus:ring-2 focus:ring-red-300 mb-4"
               rows={3}
             />
             <div className="flex gap-3">
               <button
                 onClick={() => { setShowDirectModal(false); setPendingMode(null); setDirectReason(""); }}
-                className="flex-1 py-3 border border-gray-200 text-gray-500 font-chivo font-bold text-sm uppercase tracking-wide rounded-xl active:scale-95 transition-all"
+                className="flex-1 py-3 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-500 font-chivo font-bold text-sm uppercase tracking-wide rounded-xl active:scale-95 transition-all"
               >
                 Cancel
               </button>

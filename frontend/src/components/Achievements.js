@@ -41,7 +41,7 @@ export default function Achievements() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -54,7 +54,7 @@ export default function Achievements() {
   const nextThreshold = stats?.next_level_threshold || 100;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
       <ForgeHeader title="Achievements" subtitle={`${earned.length}/${ALL_ACHIEVEMENTS.length} unlocked`} />
 
       <div className="px-6 pt-5 space-y-5">
@@ -93,10 +93,10 @@ export default function Achievements() {
             { label: "Check-ins", value: stats?.total_checkins || 0, icon: "✅" },
             { label: "Consistency", value: `${stats?.completion_rate || 0}%`, icon: "📊" },
           ].map((s) => (
-            <div key={s.label} className="bg-white border border-gray-100 rounded-2xl p-3 text-center">
+            <div key={s.label} className="bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl p-3 text-center">
               <p className="text-xl mb-1">{s.icon}</p>
-              <p className="text-lg font-black text-gray-900 font-chivo">{s.value}</p>
-              <p className="text-xs text-gray-400 font-manrope">{s.label}</p>
+              <p className="text-lg font-black text-gray-900 dark:text-white font-chivo">{s.value}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope">{s.label}</p>
             </div>
           ))}
         </div>
@@ -104,7 +104,7 @@ export default function Achievements() {
         {/* Earned achievements */}
         {earned.length > 0 && (
           <div>
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest font-chivo mb-3">Earned</p>
+            <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest font-chivo mb-3">Earned</p>
             <div className="grid grid-cols-2 gap-3">
               {earned.map((ach) => {
                 const def = ALL_ACHIEVEMENTS.find((a) => a.type === ach.type);
@@ -112,11 +112,11 @@ export default function Achievements() {
                   <div
                     key={ach.achievement_id}
                     data-testid={`achievement-${ach.type}`}
-                    className="bg-white border-2 border-orange-200 rounded-2xl p-4 shadow-sm"
+                    className="bg-white dark:bg-gray-950 border-2 border-orange-200 rounded-2xl p-4 shadow-sm"
                   >
                     <span className="text-3xl block mb-2">{def?.icon || "🏅"}</span>
-                    <p className="font-bold font-chivo text-gray-900 text-sm">{ach.name}</p>
-                    <p className="text-xs text-gray-400 font-manrope mt-0.5">{ach.description}</p>
+                    <p className="font-bold font-chivo text-gray-900 dark:text-white text-sm">{ach.name}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mt-0.5">{ach.description}</p>
                     <p className="text-xs text-orange-400 font-manrope mt-2">
                       {new Date(ach.earned_at).toLocaleDateString()}
                     </p>
@@ -129,17 +129,17 @@ export default function Achievements() {
 
         {/* Locked achievements */}
         <div>
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest font-chivo mb-3">Locked</p>
+          <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest font-chivo mb-3">Locked</p>
           <div className="grid grid-cols-2 gap-3">
             {ALL_ACHIEVEMENTS.filter((a) => !earnedTypes.has(a.type)).map((ach) => (
               <div
                 key={ach.type}
                 data-testid={`locked-achievement-${ach.type}`}
-                className="bg-gray-50 border border-gray-100 rounded-2xl p-4 opacity-50"
+                className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-4 opacity-50"
               >
                 <span className="text-3xl block mb-2 grayscale">{ach.icon}</span>
-                <p className="font-bold font-chivo text-gray-600 text-sm">{ach.name}</p>
-                <p className="text-xs text-gray-400 font-manrope mt-0.5">{ach.description}</p>
+                <p className="font-bold font-chivo text-gray-600 dark:text-gray-500 text-sm">{ach.name}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mt-0.5">{ach.description}</p>
               </div>
             ))}
           </div>
