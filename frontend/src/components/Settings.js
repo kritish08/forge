@@ -191,6 +191,18 @@ export default function Settings() {
     }
   };
 
+  // Single entry point for timezone / notification-schedule writes so a failed
+  // PUT surfaces an error toast instead of silently leaving the UI out of sync.
+  const saveSettings = async (payload, successMsg) => {
+    try {
+      await api.put("/user/settings", payload);
+      await refreshUser();
+      if (successMsg) toast.success(successMsg);
+    } catch {
+      toast.error("Failed to save settings. Please try again.");
+    }
+  };
+
   const deleteAccount = async () => {
     if (!deletePassword) {
       toast.error("Please enter your password to confirm.");
@@ -530,7 +542,7 @@ export default function Settings() {
                   <label className="text-sm font-bold text-gray-900 dark:text-white font-manrope block mb-2">Timezone</label>
                   <select 
                     value={user?.timezone || "UTC"}
-                    onChange={(e) => api.put("/user/settings", { timezone: e.target.value }).then(refreshUser).then(() => toast.success("Timezone updated!"))}
+                    onChange={(e) => saveSettings({ timezone: e.target.value }, "Timezone updated!")}
                     className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-orange-500"
                   >
                     {Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone').map(tz => (
@@ -545,7 +557,7 @@ export default function Settings() {
                     <button 
                       onClick={() => {
                         const current = user?.notification_rules || [];
-                        api.put("/user/settings", { notification_rules: [...current, { days: [0,1,2,3,4,5,6], time: "08:00" }] }).then(refreshUser).then(() => toast.success("Added schedule"));
+                        saveSettings({ notification_rules: [...current, { days: [0,1,2,3,4,5,6], time: "08:00" }] }, "Added schedule");
                       }}
                       className="text-orange-500 hover:bg-orange-50 p-1.5 rounded-lg transition-colors flex items-center gap-1 text-sm font-bold font-manrope"
                     >
@@ -564,7 +576,7 @@ export default function Settings() {
                             const rules = [...(user?.notification_rules || [])];
                             if (!rules[idx]) rules[idx] = { days: [0,1,2,3,4,5,6] };
                             rules[idx].time = e.target.value;
-                            api.put("/user/settings", { notification_rules: rules }).then(refreshUser);
+                            saveSettings({ notification_rules: rules }, "Schedule updated");
                           }}
                           className="flex-1 bg-transparent py-3 text-sm font-manrope focus:outline-none"
                         />
@@ -573,7 +585,7 @@ export default function Settings() {
                         onClick={() => {
                           const rules = [...(user?.notification_rules || [])];
                           rules.splice(idx, 1);
-                          api.put("/user/settings", { notification_rules: rules }).then(refreshUser);
+                          saveSettings({ notification_rules: rules }, "Schedule removed");
                         }}
                         className="p-3 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
                         title="Remove schedule"

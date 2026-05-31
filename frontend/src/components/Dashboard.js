@@ -60,6 +60,7 @@ export default function Dashboard() {
   const [gratitude, setGratitude] = useState("");
   const [stats, setStats] = useState({ streak: 0, today_points: 0, max_today_points: 0, level: 1, habits_today: 0, habits_total: 0 });
   const [wellnessWarning, setWellnessWarning] = useState(null);
+  const [weeklyCompletions, setWeeklyCompletions] = useState({});
   const [loading, setLoading] = useState(true);
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -93,9 +94,19 @@ export default function Dashboard() {
   const toggleHabit = async (habit) => {
     const isCompleted = !!completions[habit.habit_id];
     const prevCompletions = { ...completions };
+    const prevWeekly = { ...weeklyCompletions };
 
     setAnimating((prev) => ({ ...prev, [habit.habit_id]: true }));
     setTimeout(() => setAnimating((prev) => ({ ...prev, [habit.habit_id]: false })), 400);
+
+    // Optimistically adjust the weekly counter for times_per_week habits so the
+    // progress dots update instantly without refetching the whole completion history.
+    if (habit.frequency_type === "times_per_week") {
+      setWeeklyCompletions((prev) => {
+        const cur = prev[habit.habit_id] || 0;
+        return { ...prev, [habit.habit_id]: Math.max(0, cur + (isCompleted ? -1 : 1)) };
+      });
+    }
 
     try {
       if (isCompleted) {
@@ -108,12 +119,17 @@ export default function Dashboard() {
         setCompletions((prev) => ({ ...prev, [habit.habit_id]: res.data.completion_id }));
         toast.success(`+${habit.priority}pt — ${habit.name} done!`, { duration: 2000 });
       }
-      const statsRes = await api.get("/analytics/stats");
-      setStats(statsRes.data);
     } catch {
       setCompletions(prevCompletions);
+      setWeeklyCompletions(prevWeekly);
       toast.error("Failed to update. Try again.");
+      return;
     }
+    // Best-effort stats refresh — a failure here must NOT revert a successful toggle.
+    try {
+      const statsRes = await api.get("/analytics/stats");
+      setStats(statsRes.data);
+    } catch { /* stats will refresh on next full load */ }
   };
 
   const submitMood = async () => {
@@ -135,8 +151,9 @@ export default function Dashboard() {
   const scheduledHabits = useMemo(() => habits.filter(h => isScheduledToday(h)), [habits]);
   const restDayHabits = useMemo(() => habits.filter(h => !isScheduledToday(h)), [habits]);
 
-  // Get weekly completions count for times_per_week habits
-  const [weeklyCompletions, setWeeklyCompletions] = useState({});
+  // Seed weekly completion counts for times_per_week habits. Depends only on
+  // `habits` — toggleHabit keeps the counts live optimistically, so we no longer
+  // refetch the entire completions history on every check-in.
   useEffect(() => {
     const fetchWeeklyComps = async () => {
       const weeklyHabits = habits.filter(h => h.frequency_type === "times_per_week");
@@ -161,7 +178,7 @@ export default function Dashboard() {
       } catch { /* silent */ }
     };
     fetchWeeklyComps();
-  }, [habits, completions]);
+  }, [habits]);
 
   const completionPct = stats.max_today_points > 0
     ? Math.round(stats.today_points / stats.max_today_points * 100)
