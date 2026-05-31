@@ -10,6 +10,10 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 TOKEN = "test_session_forge_001"
 AUTH_HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
+# Live-server integration suite — deselected by default (see pytest.ini).
+# Run explicitly with: pytest -m integration  (requires REACT_APP_BACKEND_URL).
+pytestmark = pytest.mark.integration
+
 # Store created IDs for reuse across tests
 habit_id = None
 completion_id = None
