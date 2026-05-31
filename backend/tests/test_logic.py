@@ -166,6 +166,45 @@ def test_dow_patterns():
     assert res["Wed"] == 0.0
 
 
+ALLDAYS = [0, 1, 2, 3, 4, 5, 6]
+
+
+def test_due_daily_slot_exact_and_grace_window():
+    rules = [{"days": ALLDAYS, "time": "20:00"}]  # 20:00 == 1200 minutes
+    assert logic.due_daily_slot(rules, 2, 1200, {}, "D") == "20:00"          # exact minute
+    assert logic.due_daily_slot(rules, 2, 1230, {}, "D") == "20:00"          # 30 min late, within grace
+    assert logic.due_daily_slot(rules, 2, 1320, {}, "D") == "20:00"          # exactly +120 (edge)
+    assert logic.due_daily_slot(rules, 2, 1321, {}, "D") is None             # past grace
+    assert logic.due_daily_slot(rules, 2, 1199, {}, "D") is None             # before slot
+
+
+def test_due_daily_slot_weekday_filter():
+    rules = [{"days": [0], "time": "20:00"}]   # Mondays only
+    assert logic.due_daily_slot(rules, 0, 1200, {}, "D") == "20:00"
+    assert logic.due_daily_slot(rules, 2, 1200, {}, "D") is None
+
+
+def test_due_daily_slot_dedupe_by_last_sent():
+    rules = [{"days": ALLDAYS, "time": "20:00"}]
+    assert logic.due_daily_slot(rules, 2, 1205, {"20:00": "D"}, "D") is None       # already sent today
+    assert logic.due_daily_slot(rules, 2, 1205, {"20:00": "YDAY"}, "D") == "20:00"  # sent a different day
+
+
+def test_due_daily_slot_picks_earliest_when_multiple_due():
+    rules = [{"days": ALLDAYS, "time": "09:00"}, {"days": ALLDAYS, "time": "08:00"}]
+    # now=540 (09:00): 08:00 window [480,600] and 09:00 window [540,660] both include 540 -> earliest wins
+    assert logic.due_daily_slot(rules, 2, 540, {}, "D") == "08:00"
+
+
+def test_is_weekly_due():
+    assert logic.is_weekly_due(6, 540, None, "D") is True          # Sun 09:00
+    assert logic.is_weekly_due(6, 600, None, "D") is True          # Sun 10:00 within grace
+    assert logic.is_weekly_due(6, 661, None, "D") is False         # past grace
+    assert logic.is_weekly_due(6, 539, None, "D") is False         # before 09:00
+    assert logic.is_weekly_due(2, 540, None, "D") is False         # not Sunday
+    assert logic.is_weekly_due(6, 540, "D", "D") is False          # already sent today
+
+
 def test_time_patterns_buckets():
     comps = [
         {"completed_at": "2026-01-15T08:30:00+00:00"},  # early   (<9)

@@ -217,3 +217,32 @@ def compute_time_patterns(completions: list, tz: timezone) -> dict:
             pass
     total = max(sum(buckets.values()), 1)
     return {k: round(v / total * 100, 1) for k, v in buckets.items()}
+
+
+def due_daily_slot(rules: list, weekday: int, now_min: int, last_sent: dict, today: str, grace: int = 120):
+    """Pick the earliest daily notification slot that is due now and not yet sent today.
+
+    A slot (a notification_rule's "HH:MM") is due when the current local time is at or past
+    the slot time but within `grace` minutes of it, and last_sent[slot] != today. The grace
+    window means a missed/delayed scheduler tick still fires once; the last-sent date guard
+    prevents duplicate sends within that window. Returns the slot string, or None."""
+    best, best_min = None, None
+    for r in rules:
+        if weekday not in r.get("days", []):
+            continue
+        slot = r.get("time", "20:00")
+        try:
+            hh, mm = slot.split(":")
+            slot_min = int(hh) * 60 + int(mm)
+        except Exception:
+            continue
+        if slot_min <= now_min <= slot_min + grace and (last_sent or {}).get(slot) != today:
+            if best_min is None or slot_min < best_min:
+                best, best_min = slot, slot_min
+    return best
+
+
+def is_weekly_due(weekday: int, now_min: int, last_weekly_sent, today: str, grace: int = 120) -> bool:
+    """Weekly summary is due on Sunday (weekday 6) within `grace` minutes after 09:00,
+    once per day (guarded by last_weekly_sent)."""
+    return weekday == 6 and 9 * 60 <= now_min <= 9 * 60 + grace and last_weekly_sent != today

@@ -4,7 +4,8 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from config import SMTP_HOST, SMTP_USER, VAPID_PRIVATE_KEY_B64, VAPID_PUBLIC_KEY, APP_URL, API_URL, DOMAIN_NAME, logger
 from db import db
-from logic import get_level, is_habit_scheduled_today, compute_global_streak, aggregate_consistency
+from logic import (get_level, is_habit_scheduled_today, compute_global_streak, aggregate_consistency,
+                   due_daily_slot, is_weekly_due)
 from security import create_token
 
 scheduler = AsyncIOScheduler(timezone="UTC")
@@ -107,54 +108,44 @@ async def daily_reminder_job():
             tz = timezone.utc
             
         local_now = utc_now.astimezone(tz)
-        local_time = local_now.strftime("%H:%M")
-        local_weekday = local_now.weekday()
-        
+        today = local_now.strftime("%Y-%m-%d")
+        weekday = local_now.weekday()
+        now_min = local_now.hour * 60 + local_now.minute
+
         rules = user.get("notification_rules", [{"days": [0,1,2,3,4,5,6], "time": "20:00"}])
-        should_notify = False
-        for r in rules:
-            if local_weekday in r.get("days", []) and r.get("time", "20:00") == local_time:
-                should_notify = True
-                break
-                
-        if not should_notify:
+        # Due within a grace window after the slot time, deduped by last-sent date so a
+        # delayed/missed scheduler tick still fires exactly once.
+        slot = due_daily_slot(rules, weekday, now_min, user.get("last_daily_sent"), today)
+        if not slot:
             continue
 
-        today = local_now.strftime("%Y-%m-%d")
-        today_weekday = local_weekday
         user_id = user["user_id"]
         habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
-        if not habits:
-            continue
-        # Only consider habits scheduled for today
-        scheduled_habits = [h for h in habits if is_habit_scheduled_today(h, today_weekday)]
-        if not scheduled_habits:
-            continue
-        today_comps = await db.completions.find({"user_id": user_id, "date": today}, {"_id": 0}).to_list(100)
-        done_ids = {c["habit_id"] for c in today_comps}
-        remaining = [h for h in scheduled_habits if h["habit_id"] not in done_ids]
-        if not remaining:
-            continue
+        scheduled_habits = [h for h in habits if is_habit_scheduled_today(h, weekday)]
+        remaining = []
+        if scheduled_habits:
+            today_comps = await db.completions.find({"user_id": user_id, "date": today}, {"_id": 0}).to_list(100)
+            done_ids = {c["habit_id"] for c in today_comps}
+            remaining = [h for h in scheduled_habits if h["habit_id"] not in done_ids]
 
-        # Push notification — respect opt-in preference
-        push_enabled = user.get("push_notifications_enabled", True)
-        if push_enabled:
-            try:
-                await send_push(user, "FORGE — Check in!", f"{len(remaining)} habit(s) remaining today 🔥")
-            except Exception as e:
-                logger.warning("Push failed for user %s: %s", user_id, e)
+        if remaining:
+            # Push notification — respect opt-in preference
+            if user.get("push_notifications_enabled", True):
+                try:
+                    await send_push(user, "FORGE — Check in!", f"{len(remaining)} habit(s) remaining today 🔥")
+                except Exception as e:
+                    logger.warning("Push failed for user %s: %s", user_id, e)
 
-        # Email — respect email_daily_reminder setting
-        if user.get("email_daily_reminder", True) and user.get("email"):
-            items = "".join([f"<li style='margin:4px 0'>{h['name']}</li>" for h in remaining[:5]])
-            all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
-            all_habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
-            streak = compute_global_streak(all_comps, all_habits, today)
-            
-            unsub_token = create_token(user_id, "unsubscribe", 60 * 24 * 365)
-            unsub_link = f"{API_URL}/api/notifications/unsubscribe?token={unsub_token}&type=daily"
-            
-            html = f"""
+            # Email — respect email_daily_reminder setting
+            if user.get("email_daily_reminder", True) and user.get("email"):
+                items = "".join([f"<li style='margin:4px 0'>{h['name']}</li>" for h in remaining[:5]])
+                all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
+                streak = compute_global_streak(all_comps, habits, today)
+
+                unsub_token = create_token(user_id, "unsubscribe", 60 * 24 * 365)
+                unsub_link = f"{API_URL}/api/notifications/unsubscribe?token={unsub_token}&type=daily"
+
+                html = f"""
             <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px">
               <h2 style="color:#F97316">🔥 Daily Check-in — Keep the streak alive!</h2>
               <p style="color:#374151">Hey {user['name']}, you have <strong>{len(remaining)}</strong> habit(s) left today:</p>
@@ -166,7 +157,13 @@ async def daily_reminder_job():
                 <a href="{APP_URL}/settings" style="color:#F97316">Manage all settings</a>
               </p>
             </div>"""
-            await send_email(user["email"], "🔥 FORGE: Complete your habits today", html)
+                try:
+                    await send_email(user["email"], "🔥 FORGE: Complete your habits today", html)
+                except Exception as e:
+                    logger.warning("Daily email failed for %s: %s", user_id, e)
+
+        # Mark this slot handled today — within the grace window we neither re-send nor re-query.
+        await db.users.update_one({"user_id": user_id}, {"$set": {f"last_daily_sent.{slot}": today}})
 
 
 async def weekly_summary_job():
@@ -181,15 +178,21 @@ async def weekly_summary_job():
             tz = timezone.utc
             
         local_now = utc_now.astimezone(tz)
-        local_time = local_now.strftime("%H:%M")
-        local_weekday = local_now.weekday()
-        
-        if local_weekday != 6 or local_time != "09:00":
+        today = local_now.strftime("%Y-%m-%d")
+        weekday = local_now.weekday()
+        now_min = local_now.hour * 60 + local_now.minute
+
+        # Due Sunday within a grace window after 09:00, deduped by last-sent date so a
+        # delayed/missed scheduler tick still fires exactly once for the week.
+        if not is_weekly_due(weekday, now_min, user.get("last_weekly_sent"), today):
             continue
 
-        today = local_now.strftime("%Y-%m-%d")
-        start_7 = (local_now - timedelta(days=7)).strftime("%Y-%m-%d")
         user_id = user["user_id"]
+        # Claim this week's slot up-front (deduped by date) so the grace window neither
+        # re-queries nor re-sends, even if delivery below is skipped or fails.
+        await db.users.update_one({"user_id": user_id}, {"$set": {"last_weekly_sent": today}})
+
+        start_7 = (local_now - timedelta(days=7)).strftime("%Y-%m-%d")
         week_comps = await db.completions.find({"user_id": user_id, "date": {"$gte": start_7}}, {"_id": 0}).to_list(10000)
         habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
         all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
@@ -229,4 +232,7 @@ async def weekly_summary_job():
             <a href="{APP_URL}/settings" style="color:#F97316">Manage all settings</a>
           </p>
         </div>"""
-        await send_email(user["email"], f"🔥 FORGE Weekly: {rate}% consistency this week", html)
+        try:
+            await send_email(user["email"], f"🔥 FORGE Weekly: {rate}% consistency this week", html)
+        except Exception as e:
+            logger.warning("Weekly email failed for %s: %s", user_id, e)
