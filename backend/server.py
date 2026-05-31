@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import DuplicateKeyError
 import os, logging, uuid, time, base64, json
 from pathlib import Path
 from pydantic import BaseModel, EmailStr
@@ -121,9 +122,13 @@ def create_token(user_id: str, token_type: str, expires_minutes: int) -> str:
     exp = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
     return jwt.encode({"sub": user_id, "exp": exp, "type": token_type}, SECRET_KEY, algorithm=ALGORITHM)
 
-def decode_token(token: str) -> Optional[str]:
+def decode_token(token: str, expected_type: Optional[str] = None) -> Optional[str]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # Reject token-type confusion: a refresh/password_reset/unsubscribe token
+        # must never be accepted where an access token is expected, and vice-versa.
+        if expected_type is not None and payload.get("type") != expected_type:
+            return None
         return payload.get("sub")
     except JWTError:
         return None
@@ -137,7 +142,7 @@ async def get_current_user(request: Request):
         token = request.cookies.get("access_token")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    user_id = decode_token(token)
+    user_id = decode_token(token, expected_type="access")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
@@ -919,7 +924,7 @@ async def refresh(request: Request, response: Response):
     if not token_doc:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    user_id = decode_token(rt)
+    user_id = decode_token(rt, expected_type="refresh")
     if not user_id:
         await db.refresh_tokens.delete_one({"token": rt})
         raise HTTPException(status_code=401, detail="Refresh token expired")
@@ -1014,7 +1019,7 @@ async def reset_password(data: PasswordReset, request: Request):
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     
     # Verify token
-    user_id = decode_token(data.token)
+    user_id = decode_token(data.token, expected_type="password_reset")
     if not user_id:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
     
@@ -1076,7 +1081,7 @@ from fastapi.responses import HTMLResponse
 
 @api_router.get("/notifications/unsubscribe")
 async def unsubscribe_email(token: str, type: str):
-    user_id = decode_token(token)
+    user_id = decode_token(token, expected_type="unsubscribe")
     if not user_id:
          return HTMLResponse("<h1>Invalid or expired link.</h1>", status_code=400)
     
@@ -1160,7 +1165,17 @@ async def create_completion(data: CompletionCreate, current_user=Depends(get_cur
                   "habit_id": data.habit_id, "date": target_date,
                   "completed_at": datetime.now(timezone.utc).isoformat(),
                   "points_earned": habit.get("priority", 1)}
-    await db.completions.insert_one(completion)
+    try:
+        await db.completions.insert_one(completion)
+    except DuplicateKeyError:
+        # Race backstop: a concurrent request already inserted the same
+        # (user_id, habit_id, date). Return the existing completion instead of
+        # creating a duplicate that would inflate points/streaks/achievements.
+        existing = await db.completions.find_one(
+            {"user_id": current_user["user_id"], "habit_id": data.habit_id, "date": target_date}, {"_id": 0})
+        if existing:
+            return existing
+        raise
     completion.pop("_id", None)
     await check_and_award_achievements(current_user["user_id"])
     return completion
@@ -1479,8 +1494,40 @@ app.include_router(api_router)
 # Middleware moved to top
 
 
+async def _ensure_indexes():
+    """Create indexes (idempotent). Unique indexes are guarded individually so
+    that pre-existing duplicate data can never crash startup of the live app —
+    on conflict we log and (for completions) fall back to a non-unique index."""
+    try:
+        await db.completions.create_index(
+            [("user_id", 1), ("habit_id", 1), ("date", 1)],
+            unique=True, name="uniq_user_habit_date")
+    except Exception as e:
+        logger.warning(
+            "Could not create UNIQUE completion index — dedupe existing data, "
+            f"then restart to enforce it. Falling back to non-unique. ({e})")
+        try:
+            await db.completions.create_index([("user_id", 1), ("date", 1)], name="user_date")
+        except Exception:
+            pass
+    for coll, keys, kwargs in [
+        ("users", [("email", 1)], {"unique": True, "name": "uniq_email"}),
+        ("users", [("user_id", 1)], {"name": "user_id"}),
+        ("habits", [("user_id", 1)], {"name": "user_id"}),
+        ("moods", [("user_id", 1), ("date", 1)], {"name": "user_date"}),
+        ("refresh_tokens", [("token", 1)], {"name": "token"}),
+        ("password_resets", [("token", 1)], {"name": "token"}),
+        ("ai_insights", [("user_id", 1)], {"name": "user_id"}),
+    ]:
+        try:
+            await db[coll].create_index(keys, **kwargs)
+        except Exception as e:
+            logger.warning(f"Index on {coll} {keys} skipped: {e}")
+
+
 @app.on_event("startup")
 async def startup():
+    await _ensure_indexes()
     scheduler.add_job(daily_reminder_job, "cron", minute="*", id="daily_reminder")
     scheduler.add_job(weekly_summary_job, "cron", minute="*", id="weekly_summary")
     scheduler.start()
