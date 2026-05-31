@@ -368,6 +368,34 @@ def compute_habit_adherence(habit: dict, completions: list, local_now: datetime,
                 completed += 1
     return round(completed / max(scheduled, 1) * 100)
 
+
+def habit_due_count(habit: dict, local_now: datetime, days: int) -> float:
+    """How many times this habit was 'due' over the last `days` days (incl. today), schedule-aware."""
+    ft = habit.get("frequency_type", "daily")
+    if ft == "specific_days":
+        wanted = set(habit.get("frequency_days", []))
+        return float(sum(1 for i in range(days) if (local_now - timedelta(days=i)).weekday() in wanted))
+    if ft == "times_per_week":
+        return habit.get("frequency_target", 1) * (days / 7.0)
+    return float(days)  # daily / default
+
+
+def aggregate_consistency(habits: list, completions: list, local_now: datetime, days: int) -> float:
+    """Unified schedule-aware consistency %: completions of ACTIVE habits within the last
+    `days` days divided by how many were scheduled, clamped to 0..100. Single source of
+    truth shared by /analytics/stats, /ai/insight and the weekly summary email so every
+    surface reports the same number."""
+    if not habits:
+        return 0.0
+    active_ids = {h["habit_id"] for h in habits}
+    start = (local_now - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+    today = local_now.strftime("%Y-%m-%d")
+    done = sum(1 for c in completions
+               if c.get("habit_id") in active_ids and start <= c.get("date", "") <= today)
+    possible = sum(habit_due_count(h, local_now, days) for h in habits)
+    return round(min(done / max(possible, 1.0) * 100, 100.0), 1)
+
+
 async def check_and_award_achievements(user_id: str) -> list:
     user = await db.users.find_one({"user_id": user_id})
     if not user:
@@ -667,17 +695,8 @@ async def weekly_summary_job():
         if not week_comps or not user.get("email"):
             continue
 
-        # Schedule-aware consistency rate: scheduled completions over the past 7 days
-        scheduled_possible_7 = 0
-        for h in habits:
-            ft = h.get("frequency_type", "daily")
-            if ft == "daily":
-                scheduled_possible_7 += 7
-            elif ft == "specific_days":
-                scheduled_possible_7 += len(h.get("frequency_days", []))
-            elif ft == "times_per_week":
-                scheduled_possible_7 += h.get("frequency_target", 1)
-        rate = round(len(week_comps) / max(scheduled_possible_7, 1) * 100)
+        # Schedule-aware consistency over the past 7 days (unified helper)
+        rate = round(aggregate_consistency(habits, all_comps, local_now, 7))
         streak = compute_global_streak(all_comps, habits, today)
         total_pts = sum(c.get("points_earned", 1) for c in all_comps)
         lvl = get_level(total_pts)
@@ -855,7 +874,8 @@ Generate personalized insight:"""
 
 # ── Auth Routes ─────────────────────────────────────────────────────────────────
 @api_router.post("/auth/register")
-async def register(data: RegisterRequest, response: Response, background_tasks: BackgroundTasks):
+@limiter.limit("10/hour")
+async def register(data: RegisterRequest, request: Request, response: Response, background_tasks: BackgroundTasks):
     if len(data.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     email = data.email.lower().strip()
@@ -1250,7 +1270,6 @@ async def get_stats(current_user=Depends(get_current_user)):
     
     today_comps = [c for c in all_comps if c["date"] == today and c["habit_id"] in scheduled_ids]
     today_bonus = [c for c in all_comps if c["date"] == today and c["habit_id"] not in scheduled_ids]
-    recent_comps = [c for c in all_comps if c["date"] >= start_14]
 
     total_pts = sum(c.get("points_earned", 1) for c in all_comps)
     today_pts = sum(c.get("points_earned", 1) for c in today_comps) + sum(c.get("points_earned", 1) for c in today_bonus)
@@ -1261,17 +1280,8 @@ async def get_stats(current_user=Depends(get_current_user)):
     
     lvl_data = get_level_progress(total_pts)
     
-    # Completion rate: scheduled completions over 14 days
-    scheduled_possible = 0
-    for h in habits:
-        ft = h.get("frequency_type", "daily")
-        if ft == "daily":
-            scheduled_possible += 14
-        elif ft == "specific_days":
-            scheduled_possible += len(h.get("frequency_days", [])) * 2
-        elif ft == "times_per_week":
-            scheduled_possible += h.get("frequency_target", 1) * 2
-    rate = len(recent_comps) / max(scheduled_possible, 1) * 100 if habits else 0
+    # Completion rate: schedule-aware consistency over the last 14 days (unified helper)
+    rate = aggregate_consistency(habits, all_comps, local_now, 14)
 
     try:
         created_dt = datetime.fromisoformat(current_user.get("created_at", local_now.isoformat()).replace("Z", "+00:00"))
@@ -1351,7 +1361,8 @@ async def get_patterns(current_user=Depends(get_current_user)):
 
 # ── AI Routes ───────────────────────────────────────────────────────────────────
 @api_router.post("/ai/insight")
-async def generate_insight(data: InsightRequest, current_user=Depends(get_current_user)):
+@limiter.limit("20/hour")
+async def generate_insight(data: InsightRequest, request: Request, current_user=Depends(get_current_user)):
     user_id = current_user["user_id"]
     tz_str = current_user.get("timezone", "UTC")
     try:
@@ -1362,15 +1373,13 @@ async def generate_insight(data: InsightRequest, current_user=Depends(get_curren
     start_14 = (local_now - timedelta(days=14)).strftime("%Y-%m-%d")
     start_7 = (local_now - timedelta(days=7)).strftime("%Y-%m-%d")
 
-    comps = await db.completions.find({"user_id": user_id, "date": {"$gte": start_14}}, {"_id": 0}).to_list(10000)
     all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
     habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
     past = await db.ai_insights.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(5)
     moods = await db.moods.find({"user_id": user_id, "date": {"$gte": start_7}}, {"_id": 0}).sort("date", -1).to_list(7)
     achievements = await db.achievements.find({"user_id": user_id}, {"_id": 0}).sort("earned_at", -1).to_list(5)
 
-    n_habits = max(len(habits), 1)
-    rate = len(comps) / (n_habits * 14) * 100 if habits else 0
+    rate = aggregate_consistency(habits, all_comps, local_now, 14)
     streak = compute_global_streak(all_comps, habits, local_now.strftime("%Y-%m-%d"))
 
     try:
@@ -1528,8 +1537,10 @@ async def _ensure_indexes():
 @app.on_event("startup")
 async def startup():
     await _ensure_indexes()
-    scheduler.add_job(daily_reminder_job, "cron", minute="*", id="daily_reminder")
-    scheduler.add_job(weekly_summary_job, "cron", minute="*", id="weekly_summary")
+    scheduler.add_job(daily_reminder_job, "cron", minute="*", id="daily_reminder",
+                      max_instances=1, coalesce=True, misfire_grace_time=120)
+    scheduler.add_job(weekly_summary_job, "cron", minute="*", id="weekly_summary",
+                      max_instances=1, coalesce=True, misfire_grace_time=120)
     scheduler.start()
     logger.info("FORGE backend started — scheduler running")
 
