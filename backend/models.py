@@ -1,0 +1,68 @@
+from pydantic import BaseModel
+from typing import Optional
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: str
+    picture: str = ""
+    timezone: str = "UTC"
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+class PasswordReset(BaseModel):
+    token: str
+    new_password: str
+
+class HabitCreate(BaseModel):
+    name: str
+    priority: int = 1
+    context: str = ""
+    target_time: str = ""
+    color: str = "#F97316"
+    frequency_type: str = "daily"          # "daily" | "specific_days" | "times_per_week"
+    frequency_days: list = []              # [0,1,2,3,4,5,6] — 0=Mon, 6=Sun (ISO weekday)
+    frequency_target: int = 7              # For times_per_week: how many days per week (1-7)
+
+class HabitUpdate(BaseModel):
+    name: Optional[str] = None
+    priority: Optional[int] = None
+    context: Optional[str] = None
+    target_time: Optional[str] = None
+    color: Optional[str] = None
+    is_active: Optional[bool] = None
+    frequency_type: Optional[str] = None
+    frequency_days: Optional[list] = None
+    frequency_target: Optional[int] = None
+
+class CompletionCreate(BaseModel):
+    habit_id: str
+    date: Optional[str] = None
+
+class MoodCreate(BaseModel):
+    rating: int
+    note: str = ""
+    gratitude: str = ""
+
+class InsightRequest(BaseModel):
+    reflection: str = ""
+
+class UserSettingsUpdate(BaseModel):
+    mode: Optional[str] = None
+    direct_mode_reason: Optional[str] = None
+    onboarding_completed: Optional[bool] = None
+    email_daily_reminder: Optional[bool] = None
+    email_weekly_summary: Optional[bool] = None
+    timezone: Optional[str] = None
+    notification_rules: Optional[list] = None
+
+class PushSubscribeRequest(BaseModel):
+    subscription: dict
+
+class DeleteAccountRequest(BaseModel):
+    password: str
