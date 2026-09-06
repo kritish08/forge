@@ -14,12 +14,54 @@ import { deviceTimeZone } from "../utils/date";
  * UTC offset shown so you can confirm you picked the right one.
  */
 
-function allZones() {
+/**
+ * IANA renamed a number of zones, and browsers disagree about which name they
+ * expose. Chromium still lists Asia/Calcutta, not Asia/Kolkata — so a user in
+ * India searching for their own city by its actual name found nothing. Matching
+ * both directions fixes that whichever name a given engine happens to ship.
+ */
+export const ALIASES = {
+  "Asia/Calcutta": "Asia/Kolkata",
+  "Asia/Saigon": "Asia/Ho Chi Minh",
+  "Asia/Rangoon": "Asia/Yangon",
+  "Asia/Katmandu": "Asia/Kathmandu",
+  "Asia/Dacca": "Asia/Dhaka",
+  "Asia/Thimbu": "Asia/Thimphu",
+  "Europe/Kiev": "Europe/Kyiv",
+  "Europe/Uzhgorod": "Europe/Kyiv",
+  "America/Godthab": "America/Nuuk",
+  "Pacific/Ponape": "Pacific/Pohnpei",
+  "Pacific/Truk": "Pacific/Chuuk",
+  "Atlantic/Faeroe": "Atlantic/Faroe",
+  "America/Buenos_Aires": "America/Argentina/Buenos Aires",
+  "Asia/Chungking": "Asia/Chongqing",
+};
+// Both directions, so either spelling matches whichever the engine lists.
+const ALIAS_INDEX = Object.entries(ALIASES).reduce((acc, [legacy, modern]) => {
+  acc[legacy] = modern;
+  acc[modern.replace(/ /g, "_")] = legacy;
+  return acc;
+}, {});
+
+export function allZones() {
+  let zones;
   try {
-    return Intl.supportedValuesOf("timeZone");
+    zones = Intl.supportedValuesOf("timeZone");
   } catch {
-    return [deviceTimeZone(), "UTC"];
+    zones = ["UTC"];
   }
+  // The engine's own resolved zone is not guaranteed to appear in that list —
+  // Chromium reports UTC from resolvedOptions() while omitting it here — so the
+  // user's current zone could be missing from the picker entirely.
+  const device = deviceTimeZone();
+  if (device && !zones.includes(device)) zones = [device, ...zones];
+  return zones;
+}
+
+/** The searchable haystack for a zone: its own name plus any alias. */
+export function searchTextFor(zone) {
+  const alias = ALIAS_INDEX[zone];
+  return (alias ? `${zone} ${alias}` : zone).toLowerCase().replace(/_/g, " ");
 }
 
 /** e.g. "GMT+5:30" for a zone, right now. */
@@ -43,9 +85,7 @@ export default function TimezoneField({ value, onChange }) {
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q
-      ? zones.filter((z) => z.toLowerCase().replace(/_/g, " ").includes(q))
-      : zones;
+    const list = q ? zones.filter((z) => searchTextFor(z).includes(q)) : zones;
     return list.slice(0, 60);
   }, [query, zones]);
 
@@ -116,7 +156,14 @@ export default function TimezoneField({ value, onChange }) {
                       z === value ? "bg-accent-soft" : ""
                     }`}
                   >
-                    <span className="truncate text-sm text-ink">{pretty(z)}</span>
+                    <span className="min-w-0 truncate text-sm text-ink">
+                      {pretty(z)}
+                      {/* When the engine lists a zone under its old name, show the
+                          current one too so it is recognisable. */}
+                      {ALIASES[z] && (
+                        <span className="ml-1.5 text-ink-subtle">· {pretty(ALIASES[z])}</span>
+                      )}
+                    </span>
                     <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{offsetLabel(z)}</span>
                   </button>
                 ))}
