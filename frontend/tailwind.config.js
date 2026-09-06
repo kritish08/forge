@@ -25,6 +25,11 @@ export default {
           raised: "rgb(var(--surface-raised) / <alpha-value>)",
           sunk: "rgb(var(--surface-sunk) / <alpha-value>)",
         },
+        inverse: {
+          DEFAULT: "rgb(var(--surface-inverse) / <alpha-value>)",
+          fg: "rgb(var(--text-on-inverse) / <alpha-value>)",
+          muted: "rgb(var(--text-on-inverse-muted) / <alpha-value>)",
+        },
         line: {
           DEFAULT: "rgb(var(--border) / <alpha-value>)",
           strong: "rgb(var(--border-strong) / <alpha-value>)",

@@ -17,18 +17,21 @@
   --surface:          250 249 248;   /* page ground */
   --surface-raised:   255 255 255;   /* rows, sheets, anything lifted */
   --surface-sunk:     241 239 237;   /* insets, progress tracks, inputs */
+  /* NOTE: text-muted and text-subtle are the LIGHTEST values that still clear
+     4.5:1 against surface-raised in this theme. Lightening either one breaks
+     WCAG AA for body text — src/contrast.test.js will fail if you do. */
   --border:           231 227 224;   /* hairlines between rows */
   --border-strong:    214 209 205;   /* outlines that must be seen */
 
   --text:             28 25 23;      /* primary copy */
-  --text-muted:       107 99 93;     /* secondary copy — passes AA on surface */
-  --text-subtle:      154 145 139;   /* timestamps, units, non-essential */
+  --text-muted:       92 85 80;      /* secondary copy */
+  --text-subtle:      110 102 96;    /* timestamps, units — still AA on surface */
 
   /* Orange is the brand, and it now means exactly one thing: progress —
      completion, streak, the level bar. It is deliberately NOT used for generic
      buttons any more, because when everything is the accent nothing is. */
-  --accent:           234 88 12;
-  --accent-bold:      194 65 12;
+  --accent:           194 65 12;
+  --accent-bold:      154 52 18;
   --accent-soft:      255 243 236;   /* tinted surface behind accent content */
   --accent-contrast:  255 255 255;   /* text/icon on a filled accent */
 
@@ -38,6 +41,13 @@
   --warning-soft:     254 247 231;
   --danger:           185 28 28;
   --danger-soft:      254 242 242;
+
+  /* Deliberately dark in BOTH themes — for inverted marketing sections that are
+     meant to read as a dark band regardless of the reader's setting. Distinct
+     from --text, which flips. */
+  --surface-inverse:  25 22 20;
+  --text-on-inverse:  250 249 248;
+  --text-on-inverse-muted: 176 168 161;
 
   --shadow-sheet: 0 -8px 40px -12px rgb(28 25 23 / 0.25);
   --shadow-row:   0 1px 2px rgb(28 25 23 / 0.04);
@@ -51,8 +61,8 @@
   --border-strong:    61 55 51;
 
   --text:             245 243 241;
-  --text-muted:       168 160 154;
-  --text-subtle:      120 112 106;
+  --text-muted:       178 170 163;
+  --text-subtle:      150 141 134;
 
   /* Not an inversion: orange-600 is muddy on near-black, so the dark theme steps
      up to a lighter orange that holds its chroma against this ground. */
@@ -67,6 +77,12 @@
   --warning-soft:      42 30 8;
   --danger:           248 113 113;
   --danger-soft:      42 18 18;
+
+  /* In dark mode it lifts slightly instead of matching the page, so the band is
+     still legible as a separate section. */
+  --surface-inverse:  38 34 31;
+  --text-on-inverse:  250 249 248;
+  --text-on-inverse-muted: 176 168 161;
 
   --shadow-sheet: 0 -8px 40px -12px rgb(0 0 0 / 0.6);
   --shadow-row:   0 1px 2px rgb(0 0 0 / 0.3);

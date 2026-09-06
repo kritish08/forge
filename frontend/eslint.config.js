@@ -27,8 +27,12 @@ export default [
     },
   },
   {
-    files: ["**/*.test.{js,jsx}"],
+    files: ["**/*.test.{js,jsx}", "src/test-setup.js"],
     languageOptions: { globals: { ...globals.node } },
-    rules: { "no-undef": "off" },
+    rules: {
+      "no-undef": "off",
+      // test.each callbacks receive positional args that a given case may not use
+      "no-unused-vars": "off",
+    },
   },
 ];

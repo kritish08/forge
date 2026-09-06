@@ -37,11 +37,16 @@ export default defineConfig({
     },
   },
   test: {
-    // The date utilities are pure functions — no DOM needed.
-    environment: "node",
     // describe/test/expect without importing them, so the suite reads the same
     // as it did under CRA's jest.
     globals: true,
     include: ["src/**/*.test.{js,jsx}"],
+    // Pure-logic suites don't need a DOM; the render smoke tests do. Per-file
+    // rather than global, so the fast tests stay fast.
+    setupFiles: ["./src/test-setup.js"],
+    environmentMatchGlobs: [
+      ["src/**/*.render.test.jsx", "jsdom"],
+      ["**", "node"],
+    ],
   },
 });

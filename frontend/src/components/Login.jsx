@@ -62,7 +62,7 @@ export default function Login() {
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-2 mb-4 cursor-pointer" onClick={() => navigate("/")}>
             <div className="w-10 h-10 bg-accent rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+              <svg className="w-6 h-6 text-accent-contrast" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z" />
               </svg>
             </div>
@@ -135,7 +135,7 @@ export default function Login() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-ink text-white font-chivo font-bold text-sm py-6 rounded-xl transition-all active:scale-95 shadow-lg"
+              className="w-full bg-ink text-surface font-chivo font-bold text-sm py-6 rounded-xl transition-all active:scale-95 shadow-lg"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

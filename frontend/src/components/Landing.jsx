@@ -121,7 +121,7 @@ export default function Landing({ onGetStarted }) {
                         </button>
                         <button
                             onClick={() => handleCTA(true)}
-                            className="px-4 py-2 bg-ink dark:bg-surface-raised text-white dark:text-ink text-sm font-chivo font-bold rounded-xl hover:bg-accent dark:hover:bg-accent dark:hover:text-white transition-colors active:scale-95"
+                            className="px-4 py-2 bg-ink dark:bg-surface-raised text-white dark:text-ink text-sm font-chivo font-bold rounded-xl hover:bg-accent dark:hover:bg-accent dark:hover:text-accent-contrast transition-colors active:scale-95"
                         >
                             Get Started →
                         </button>
@@ -160,7 +160,7 @@ export default function Landing({ onGetStarted }) {
                     <div className="flex flex-col sm:flex-row gap-3 justify-center">
                         <button
                             onClick={() => handleCTA(true)}
-                            className="px-8 py-4 bg-accent text-white font-chivo font-bold text-base tracking-wide rounded-2xl shadow-lg shadow-orange-300/40 hover:shadow-xl hover:shadow-orange-300/50 active:scale-95 transition-all"
+                            className="px-8 py-4 bg-accent text-accent-contrast font-chivo font-bold text-base tracking-wide rounded-2xl shadow-lg shadow-orange-300/40 hover:shadow-xl hover:shadow-orange-300/50 active:scale-95 transition-all"
                         >
                             Start free
                         </button>
@@ -184,14 +184,14 @@ export default function Landing({ onGetStarted }) {
                 <div className="max-w-sm mx-auto mt-16">
                     <div className="bg-surface-raised rounded-3xl shadow-2xl shadow-gray-200 border border-line overflow-hidden">
                         {/* Phone status bar */}
-                        <div className="bg-ink px-6 py-4 flex items-center justify-between">
+                        <div className="bg-inverse px-6 py-4 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <div className="w-6 h-6 bg-accent rounded-md flex items-center justify-center">
-                                    <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                    <svg className="w-3.5 h-3.5 text-accent-contrast" viewBox="0 0 24 24" fill="currentColor">
                                         <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z" />
                                     </svg>
                                 </div>
-                                <span className="text-white font-chivo font-bold text-sm">FORGE</span>
+                                <span className="font-chivo text-sm font-bold text-inverse-fg">FORGE</span>
                             </div>
                             <div className="flex items-center gap-1">
                                 <div className="w-1 h-1 rounded-full bg-accent" />
@@ -229,11 +229,11 @@ export default function Landing({ onGetStarted }) {
                                             }`}
                                     >
                                         {h.done ? (
-                                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <svg className="w-3 h-3 text-accent-contrast" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                             </svg>
                                         ) : (
-                                            <span className="text-white text-xs font-bold">!</span>
+                                            <span className="text-xs font-bold text-accent-contrast">!</span>
                                         )}
                                     </div>
                                     <span className={`text-sm font-manrope font-medium flex-1 ${h.done ?"text-ink-subtle line-through" : "text-ink"}`}>
@@ -248,7 +248,7 @@ export default function Landing({ onGetStarted }) {
             </section>
 
             {/* ── STATS ───────────────────────────────────────── */}
-            <section className="py-16 bg-ink">
+            <section className="py-16 bg-inverse">
                 <div className="max-w-4xl mx-auto px-6">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
                         {stats.map((s) => (
@@ -353,7 +353,7 @@ export default function Landing({ onGetStarted }) {
                                     "{t.quote}"
                                 </p>
                                 <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-full bg-accent flex items-center justify-center text-white text-xs font-bold font-chivo">
+                                    <div className="w-9 h-9 rounded-full bg-accent flex items-center justify-center text-accent-contrast text-xs font-bold font-chivo">
                                         {t.avatar}
                                     </div>
                                     <div>
@@ -368,19 +368,19 @@ export default function Landing({ onGetStarted }) {
             </section>
 
             {/* ── FINAL CTA ───────────────────────────────────── */}
-            <section className="py-20 px-6 bg-ink relative overflow-hidden">
+            <section className="py-20 px-6 bg-inverse relative overflow-hidden">
                 <div className="absolute top-0 left-1/4 w-72 h-72 bg-accent/20 rounded-full blur-3xl -z-0" />
                 <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-danger/20 rounded-full blur-2xl -z-0" />
                 <div className="max-w-2xl mx-auto text-center relative z-10">
                     <div className="inline-flex items-center gap-2.5 mb-6">
                         <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/40">
-                            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                            <svg className="w-6 h-6 text-accent-contrast" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z" />
                             </svg>
                         </div>
-                        <span className="text-white font-black text-2xl font-chivo tracking-tight">FORGE</span>
+                        <span className="font-chivo text-2xl font-black tracking-tight text-inverse-fg">FORGE</span>
                     </div>
-                    <h2 className="text-4xl font-black text-white font-chivo leading-tight mb-4">
+                    <h2 className="mb-4 font-chivo text-4xl font-black leading-tight text-inverse-fg">
                         Ready to forge your identity?
                     </h2>
                     <p className="text-ink-subtle font-manrope leading-relaxed mb-8">
@@ -388,7 +388,7 @@ export default function Landing({ onGetStarted }) {
                     </p>
                     <button
                         onClick={() => handleCTA(true)}
-                        className="px-10 py-4 bg-accent text-white font-chivo font-bold text-base tracking-wide rounded-2xl shadow-xl shadow-orange-500/30 hover:shadow-orange-500/50 active:scale-95 transition-all"
+                        className="px-10 py-4 bg-accent text-accent-contrast font-chivo font-bold text-base tracking-wide rounded-2xl shadow-xl shadow-orange-500/30 hover:shadow-orange-500/50 active:scale-95 transition-all"
                     >
                         Start building
                     </button>
@@ -399,11 +399,11 @@ export default function Landing({ onGetStarted }) {
             <footer className="py-10 px-6 bg-surface text-center">
                 <div className="flex items-center justify-center gap-2 mb-3">
                     <div className="w-5 h-5 bg-accent rounded-md flex items-center justify-center">
-                        <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="currentColor">
+                        <svg className="w-3 h-3 text-accent-contrast" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z" />
                         </svg>
                     </div>
-                    <span className="text-white font-chivo font-bold text-sm">FORGE</span>
+                    <span className="font-chivo text-sm font-bold text-ink">FORGE</span>
                 </div>
                 <p className="text-ink-muted text-xs font-manrope">
                     Consistency forged in fire. Habits take 66 days on average — not 21.

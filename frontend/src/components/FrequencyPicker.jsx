@@ -29,7 +29,7 @@ export function FrequencyPicker({ frequencyType, frequencyDays, frequencyTarget,
                         key={opt.id}
                         type="button"
                         onClick={() => setType(opt.id)}
-                        className={`flex-1 py-2 rounded-lg text-xs font-bold font-chivo transition-all ${ frequencyType === opt.id ?"bg-accent text-white shadow-sm"
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold font-chivo transition-all ${ frequencyType === opt.id ?"bg-accent text-accent-contrast shadow-sm"
                                 : "text-ink-muted  dark:hover:bg-line-strong"
                         }`}
                     >
@@ -46,7 +46,7 @@ export function FrequencyPicker({ frequencyType, frequencyDays, frequencyTarget,
                             key={i}
                             type="button"
                             onClick={() => toggleDay(i)}
-                            className={`w-9 h-9 rounded-full text-xs font-bold font-chivo transition-all flex items-center justify-center ${ frequencyDays.includes(i) ?"bg-accent text-white shadow-md shadow-none"
+                            className={`w-9 h-9 rounded-full text-xs font-bold font-chivo transition-all flex items-center justify-center ${ frequencyDays.includes(i) ?"bg-accent text-accent-contrast shadow-md shadow-none"
                                     : "bg-surface-sunk text-ink-muted "
                             }`}
                         >

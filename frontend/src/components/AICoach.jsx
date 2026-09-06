@@ -184,7 +184,7 @@ export default function AICoach() {
             data-testid="generate-insight-btn"
             onClick={generateInsight}
             disabled={generating}
-            className="w-full py-4 bg-accent text-white font-chivo font-bold rounded-xl disabled:opacity-60 active:scale-95 transition-all"
+            className="w-full py-4 bg-accent text-accent-contrast font-chivo font-bold rounded-xl disabled:opacity-60 active:scale-95 transition-all"
           >
             {generating ? (
               <span className="flex items-center justify-center gap-2">
@@ -201,7 +201,7 @@ export default function AICoach() {
         {latestInsight && (
           <div
             data-testid="latest-insight"
-            className="bg-accent rounded-2xl p-5 text-white animate-in fade-in slide-in-from-bottom-4 duration-500"
+            className="bg-accent rounded-2xl p-5 text-accent-contrast animate-in fade-in slide-in-from-bottom-4 duration-500"
           >
             <div className="flex items-center gap-2 mb-3">
               <span className="text-sm font-bold font-chivo opacity-80">New Insight</span>

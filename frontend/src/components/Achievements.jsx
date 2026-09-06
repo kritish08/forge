@@ -54,7 +54,7 @@ export default function Achievements() {
       <div className="space-y-5">
         {/* Level card */}
         <div data-testid="level-card"
-          className="bg-accent rounded-2xl p-6 text-white">
+          className="bg-accent rounded-2xl p-6 text-accent-contrast">
           <div className="flex items-end justify-between mb-4">
             <div>
               <p className="text-xs font-bold opacity-80 mb-1">Current Level</p>

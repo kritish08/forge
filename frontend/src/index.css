@@ -44,6 +44,17 @@ select option { background-color: rgb(var(--surface-raised)); color: rgb(var(--t
   border-radius: 6px;
 }
 
+/* Inside an inverse band the ink tokens are tuned for the wrong ground — they
+   assume a light surface, so text-ink-subtle landed at 3.2:1 on the dark band.
+   Remapping the tokens for the subtree means any `text-ink*` inside one resolves
+   against the inverse palette automatically, rather than every element having to
+   remember a different class. */
+.bg-inverse {
+  --text: var(--text-on-inverse);
+  --text-muted: var(--text-on-inverse-muted);
+  --text-subtle: var(--text-on-inverse-muted);
+}
+
 /* Utility classes */
 .font-chivo { font-family: 'Chivo', sans-serif; }
 .font-manrope { font-family: 'Manrope', sans-serif; }

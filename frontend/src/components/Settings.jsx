@@ -337,7 +337,7 @@ export default function Settings() {
                             <span className="text-xs text-ink-muted font-manrope">Priority:</span>
                             {[1, 2, 3].map((p) => (
                               <button key={p} onClick={() => setEditingHabit({ ...editingHabit, priority: p })}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${editingHabit.priority === p ?"bg-accent text-white" : "bg-surface-sunk text-ink-muted"}`}>
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${editingHabit.priority === p ?"bg-accent text-accent-contrast" : "bg-surface-sunk text-ink-muted"}`}>
                                 {"⭐".repeat(p)}
                               </button>
                             ))}
@@ -360,7 +360,7 @@ export default function Settings() {
                                 frequency_type: editingHabit.frequency_type, frequency_days: editingHabit.frequency_days,
                                 frequency_target: editingHabit.frequency_target
                               })}
-                              className="flex-1 py-2 bg-accent text-white text-xs font-bold font-chivo rounded-xl">
+                              className="flex-1 py-2 bg-accent text-accent-contrast text-xs font-bold font-chivo rounded-xl">
                               Save
                             </button>
                           </div>
@@ -418,7 +418,7 @@ export default function Settings() {
                 <span className="text-xs text-ink-muted font-manrope">Priority:</span>
                 {[1, 2, 3].map((p) => (
                   <button key={p} onClick={() => setNewHabit({ ...newHabit, priority: p })}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${newHabit.priority === p ?"bg-accent text-white" : "bg-surface-sunk text-ink-muted"}`}>
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${newHabit.priority === p ?"bg-accent text-accent-contrast" : "bg-surface-sunk text-ink-muted"}`}>
                     {"⭐".repeat(p)}
                   </button>
                 ))}
@@ -434,7 +434,7 @@ export default function Settings() {
                 data-testid="settings-add-habit-btn"
                 onClick={addHabit}
                 disabled={!newHabit.name.trim()}
-                className="w-full py-3 bg-accent text-white font-chivo font-bold text-sm rounded-xl disabled:opacity-40 active:scale-95 transition-all"
+                className="w-full py-3 bg-accent text-accent-contrast font-chivo font-bold text-sm rounded-xl disabled:opacity-40 active:scale-95 transition-all"
               >
                 + Add Habit
               </button>
@@ -478,7 +478,7 @@ export default function Settings() {
                   <div className="flex gap-2">
                     <button
                       onClick={testPush}
-                      className="flex-1 py-3 bg-accent text-white font-chivo font-bold text-sm rounded-xl hover:bg-accent-bold active:scale-95 transition-all"
+                      className="flex-1 py-3 bg-accent text-accent-contrast font-chivo font-bold text-sm rounded-xl hover:bg-accent-bold active:scale-95 transition-all"
                     >
                       Send Test
                     </button>
@@ -493,7 +493,7 @@ export default function Settings() {
               ) : (
                 <button
                   onClick={subscribePush}
-                  className="w-full py-3 bg-accent text-white font-chivo font-bold text-sm rounded-xl hover:bg-accent-bold active:scale-95 transition-all"
+                  className="w-full py-3 bg-accent text-accent-contrast font-chivo font-bold text-sm rounded-xl hover:bg-accent-bold active:scale-95 transition-all"
                 >
                   Enable Push Notifications
                 </button>
@@ -630,7 +630,7 @@ export default function Settings() {
                                   }
                                   setRule({ days: next }, { immediate: true });
                                 }}
-                                className={`flex-1 h-8 rounded-lg text-xs font-bold font-chivo transition-colors ${ on ?"bg-accent text-white"
+                                className={`flex-1 h-8 rounded-lg text-xs font-bold font-chivo transition-colors ${ on ?"bg-accent text-accent-contrast"
                                     : "bg-surface-raised border border-line text-ink-subtle"
                                 }`}
                               >
