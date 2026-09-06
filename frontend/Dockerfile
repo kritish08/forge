@@ -3,14 +3,12 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# The backend URL is inlined into the bundle at BUILD time by CRA, so it must be
-# passed as a build arg — a runtime `env_file` on the nginx container is far too
-# late. compose.yaml supplies this from DOMAIN_NAME.
-ARG REACT_APP_BACKEND_URL
-ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
-
-# Don't ship source maps of the whole app to production.
-ENV GENERATE_SOURCEMAP=false
+# The backend URL is inlined into the bundle at BUILD time, so it must be passed
+# as a build arg — a runtime `env_file` on the nginx container is far too late.
+# compose.yaml supplies this from DOMAIN_NAME. (Named VITE_* since the CRA ->
+# Vite migration; source maps are disabled in vite.config.js.)
+ARG VITE_BACKEND_URL
+ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 
 # Copy manifest + lockfile first so dependency installs stay cached across code
 # changes. --frozen-lockfile makes the build reproducible: it fails rather than
@@ -22,8 +20,8 @@ RUN yarn install --frozen-lockfile
 COPY . .
 
 # Fail loudly instead of shipping a bundle that calls "undefined/api/...".
-RUN test -n "$REACT_APP_BACKEND_URL" || \
-      (echo "ERROR: build arg REACT_APP_BACKEND_URL is empty — the bundle would have no API host." && exit 1)
+RUN test -n "$VITE_BACKEND_URL" || \
+      (echo "ERROR: build arg VITE_BACKEND_URL is empty — the bundle would have no API host." && exit 1)
 
 # Build for production
 RUN yarn build

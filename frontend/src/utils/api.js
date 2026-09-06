@@ -1,7 +1,13 @@
 import axios from "axios";
 
+// Vite replaces import.meta.env.* at build time, the same way CRA inlined
+// process.env.REACT_APP_*. The name changed with the build tool; the Dockerfile
+// build arg and compose.yaml were updated to match, and the Dockerfile still
+// fails the build when it is empty rather than shipping "undefined/api".
+const API_BASE = import.meta.env.VITE_BACKEND_URL;
+
 const api = axios.create({
-  baseURL: process.env.REACT_APP_BACKEND_URL + "/api",
+  baseURL: API_BASE + "/api",
   withCredentials: true,
 });
 
@@ -55,7 +61,7 @@ api.interceptors.response.use(
 
       try {
         const res = await axios.post(
-          `${process.env.REACT_APP_BACKEND_URL}/api/auth/refresh`,
+          `${API_BASE}/api/auth/refresh`,
           {},
           { withCredentials: true }
         );

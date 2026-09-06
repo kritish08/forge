@@ -67,13 +67,16 @@ FORGE is a data-driven habit tracking application with AI-powered insights, adva
 ## 🛠️ Tech Stack
 
 ### Frontend
-- **React 18** - UI framework
+- **React 19** - UI framework
+- **Vite** - Build tool and dev server
 - **TailwindCSS** - Styling
-- **shadcn/ui** - Component library
-- **Recharts** - Data visualization
 - **React Router** - Navigation
 - **Axios** - API client
 - **Sonner** - Toast notifications
+
+Charts are hand-drawn SVG (`src/components/charts.jsx`) rather than a charting
+library — the app has two of them, and they need to be theme-aware and usable by
+touch.
 
 ### Backend
 - **FastAPI** - Modern Python web framework
@@ -134,14 +137,14 @@ uvicorn server:app --reload --port 8001
 cd frontend
 
 # Install dependencies
-yarn install
+yarn install --frozen-lockfile
 
 # Configure environment
 cp .env.example .env
-# Edit .env and set REACT_APP_BACKEND_URL=http://localhost:8001
+# Edit .env and set VITE_BACKEND_URL=http://localhost:8001
 
 # Run frontend
-yarn start
+yarn dev
 ```
 
 Visit `http://localhost:3000` 🎉
@@ -172,7 +175,7 @@ SMTP_USER=your@email.com
 SMTP_PASS=your-app-password
 
 # Edit frontend/.env
-REACT_APP_BACKEND_URL=https://yourdomain.com
+VITE_BACKEND_URL=https://yourdomain.com   # build-time only, see note below
 ```
 
 #### 3. Deploy
@@ -260,8 +263,14 @@ APP_URL=http://localhost:3000
 
 ### Frontend (`frontend/.env`)
 ```env
-REACT_APP_BACKEND_URL=http://localhost:8001
+VITE_BACKEND_URL=http://localhost:8001
 ```
+
+> **This is a build-time variable, not a runtime one.** Vite inlines it into the
+> bundle when the image is built, so `docker compose` passes it as a build arg
+> (see `compose.yaml`); a runtime `env_file` on the nginx container cannot reach
+> it. `frontend/.env` is used for local `yarn dev` only and is excluded from the
+> Docker build context. The Dockerfile fails the build if the arg is empty.
 
 ---
 

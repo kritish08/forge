@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Chivo:wght@300;400;700;900&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap');
+/* Fonts are linked once from index.html. This @import duplicated that request
+   AND blocked rendering behind the stylesheet download, serialising two round
+   trips before any text painted. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -36,10 +38,35 @@ body {
 /* Dark select option */
 .dark select option { background-color: #111827; color: #f9fafb; }
 
+/* ── Chart tokens ────────────────────────────────────────────────────────────
+   The charts used to hardcode stroke="#374151" for the grid and "#9ca3af" for
+   axis text in both themes — too dark in light mode, and pinned regardless of
+   theme. These are picked per theme rather than flipped: the light accent is
+   orange-600 (enough contrast against white for a graphical object), the dark
+   accent is orange-400, which would be muddy on white but reads clearly on
+   near-black. Grid and axis stay recessive in both. */
+:root {
+  --chart-accent: #EA580C;
+  --chart-accent-fill: rgba(249, 115, 22, 0.18);
+  --chart-muted: #D4D4D8;
+  --chart-grid: #E5E7EB;
+  --chart-axis: #71717A;
+  --chart-surface: #FFFFFF;
+}
+.dark {
+  --chart-accent: #FB923C;
+  --chart-accent-fill: rgba(251, 146, 60, 0.16);
+  --chart-muted: #3F3F46;
+  --chart-grid: #1F2937;
+  --chart-axis: #9CA3AF;
+  --chart-surface: #030712;
+}
+
 /* Utility classes */
 .font-chivo { font-family: 'Chivo', sans-serif; }
 .font-manrope { font-family: 'Manrope', sans-serif; }
-.font-mono { font-family: 'JetBrains Mono', monospace; }
+/* .font-mono dropped: JetBrains Mono was a third font family loaded for a
+   single label in the AI settings tab. */
 
 /* NOTE: there used to be a `* { transition-property: ... transform ... }` rule
    here. It made every element in the document animate colour, opacity, transform

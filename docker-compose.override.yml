@@ -11,7 +11,7 @@ services:
       args:
         # Local build talks to the backend on its published port, not the
         # Traefik production host.
-        REACT_APP_BACKEND_URL: http://localhost:8005
+        VITE_BACKEND_URL: http://localhost:8005
     ports:
       - "3005:80"
 

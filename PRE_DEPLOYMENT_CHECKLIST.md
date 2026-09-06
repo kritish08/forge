@@ -136,7 +136,7 @@ All collections verified and in use:
 - ✅ `AZURE_ENDPOINT/MODEL` - AI defaults
 
 ### Required (Frontend)
-- ✅ `REACT_APP_BACKEND_URL` - API endpoint
+- ✅ `VITE_BACKEND_URL` - API endpoint (build arg, not runtime env)
 
 ---
 
@@ -202,7 +202,7 @@ All collections verified and in use:
    - Add to `backend/.env`
 
 3. **Update URLs:**
-   - `frontend/.env`: Set `REACT_APP_BACKEND_URL` to production domain
+   - `compose.yaml`: `VITE_BACKEND_URL` build arg is derived from `DOMAIN_NAME`
    - `backend/.env`: Set `APP_URL` to production domain
    - `backend/.env`: Update `CORS_ORIGINS`
 

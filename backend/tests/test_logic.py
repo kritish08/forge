@@ -282,3 +282,13 @@ def test_validate_completion_date_rejects_malformed():
     for bad in ("15-01-2026", "not-a-date", "", None, "2026-13-45"):
         ok, reason = logic.validate_completion_date(bad, "2026-01-15")
         assert ok is False and "YYYY-MM-DD" in reason
+
+
+def test_dow_patterns_are_ordered_monday_first():
+    """Insertion order used to be a rotation starting at today, which the chart
+    rendered literally — so the bars reordered themselves every day."""
+    habits = [{"habit_id": "h1", "frequency_type": "daily"}]
+    comps = [_comp("h1", "2026-09-06")]
+    for ref in (datetime(2026, 9, 6), datetime(2026, 9, 9), datetime(2026, 9, 11)):
+        out = logic.compute_dow_patterns(comps, habits, ref)
+        assert list(out.keys()) == ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], ref

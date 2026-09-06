@@ -79,7 +79,7 @@ AWS_SECRET_ACCESS_KEY=<your-aws-secret-access-key>
 Create `frontend/.env`:
 ```env
 # Must point to your Traefik-routed backend API domain
-REACT_APP_BACKEND_URL=https://api.forge.zerp.me
+VITE_BACKEND_URL=https://api.forge.zerp.me   # inlined at BUILD time
 # For the DOMAIN_NAME setting mapped in compose.yaml
 DOMAIN_NAME=forge.zerp.me
 ```

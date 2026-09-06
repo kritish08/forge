@@ -248,7 +248,12 @@ def compute_dow_patterns(completions: list, habits: list, local_now: datetime, d
         dow_data[weekday]["c"] += by_date.get(ds, 0)
         dow_data[weekday]["p"] += max(scheduled_count, 1)
     names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    return {names[k]: round(v["c"] / max(v["p"], 1) * 100, 1) for k, v in dow_data.items()}
+    # Emit in Mon->Sun order. dow_data is populated by walking BACKWARDS from
+    # today, so its insertion order was an arbitrary rotation that changed daily
+    # — and dicts preserve insertion order, so the day-of-week chart rendered
+    # its bars in that rotation (on a Sunday: Sun, Sat, Fri, ... Mon).
+    return {names[k]: round(dow_data[k]["c"] / max(dow_data[k]["p"], 1) * 100, 1)
+            for k in range(7) if k in dow_data}
 
 def compute_time_patterns(completions: list, tz: timezone) -> dict:
     buckets = defaultdict(int)

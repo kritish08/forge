@@ -59,16 +59,14 @@ jobs:
 
       - name: Run tests
         working-directory: frontend
-        run: yarn test --watchAll=false
-        env:
-          CI: true
+        run: yarn test
+
+      - name: Lint
+        working-directory: frontend
+        run: yarn lint
 
       - name: Build
         working-directory: frontend
-        # CI=true turns lint warnings into errors, so an unused import or a bad
-        # hook dependency fails here rather than shipping.
         run: yarn build
         env:
-          CI: true
-          GENERATE_SOURCEMAP: "false"
-          REACT_APP_BACKEND_URL: http://localhost:8001
+          VITE_BACKEND_URL: http://localhost:8001
