@@ -41,11 +41,23 @@ body {
 .font-manrope { font-family: 'Manrope', sans-serif; }
 .font-mono { font-family: 'JetBrains Mono', monospace; }
 
-/* Smooth transitions */
-* {
-  transition-property: color, background-color, border-color, opacity, transform, box-shadow;
-  transition-duration: 150ms;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+/* NOTE: there used to be a `* { transition-property: ... transform ... }` rule
+   here. It made every element in the document animate colour, opacity, transform
+   and box-shadow on every change — the main source of interaction jank, and it
+   silently fought the explicit `active:scale-95` / `duration-700` transitions
+   declared throughout the components. Transitions now come only from the Tailwind
+   utilities on the elements that actually want them. */
+
+/* Respect the OS "reduce motion" setting everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Habit check pop animation */

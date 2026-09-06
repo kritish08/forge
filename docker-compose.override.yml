@@ -1,3 +1,4 @@
+# Local development overrides. Applied automatically by `docker compose up`.
 services:
   backend:
     ports:
@@ -6,6 +7,11 @@ services:
       - CORS_ORIGINS=http://localhost:3005,http://127.0.0.1:3005
 
   frontend:
+    build:
+      args:
+        # Local build talks to the backend on its published port, not the
+        # Traefik production host.
+        REACT_APP_BACKEND_URL: http://localhost:8005
     ports:
       - "3005:80"
 

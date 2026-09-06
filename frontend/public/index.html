@@ -8,6 +8,29 @@
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="FORGE" />
+        <!-- Applies the saved theme BEFORE first paint. Without this the class is
+             only set in ThemeProvider's useEffect, which runs after the first
+             render, so every cold load flashed the light theme at dark-mode users.
+             Keep the storage key and the 'system' default in sync with
+             src/context/ThemeContext.js. -->
+        <script>
+            (function () {
+                try {
+                    var saved = localStorage.getItem("forge-theme") || "system";
+                    var dark =
+                        saved === "dark" ||
+                        (saved === "system" &&
+                            window.matchMedia("(prefers-color-scheme: dark)").matches);
+                    var root = document.documentElement;
+                    root.classList.add(dark ? "dark" : "light");
+                    // Also tells the browser which palette to use for the canvas,
+                    // form controls and scrollbars before any CSS has loaded.
+                    root.style.colorScheme = dark ? "dark" : "light";
+                } catch (e) {
+                    /* private mode / storage blocked — fall through to light */
+                }
+            })();
+        </script>
         <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/favicon.svg" />
         <link rel="apple-touch-icon" href="%PUBLIC_URL%/favicon.svg" />
         <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
