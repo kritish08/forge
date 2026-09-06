@@ -2,23 +2,32 @@ import { useState, useEffect, useCallback } from "react";
 import api from "../utils/api";
 import { toast } from "sonner";
 import { FrequencyBadge } from "./FrequencyPicker";
+import { useToday } from "../hooks/useToday";
+import { addDays, daysBetween, weekdayIso, isoWeekMonday } from "../utils/date";
+
+// Mirrors logic.MAX_BACKFILL_DAYS on the server, which now enforces this for real
+// rather than trusting the client.
+const MAX_BACKFILL_DAYS = 30;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-function toDateStr(date) {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
+// All day arithmetic runs on "YYYY-MM-DD" strings in the user's timezone (see
+// utils/date). This used to build Date objects from the browser's local clock,
+// which disagreed with the server for anyone whose account timezone differs from
+// their device.
 
-function calcStreak(completionSet, habit) {
+function calcStreak(completionSet, habit, todayStr) {
     const ft = habit?.frequency_type || "daily";
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
 
+    // Today is a grace day, matching logic.compute_global_streak on the server:
+    // a day still in progress doesn't extend the streak, but it doesn't end it.
     if (ft === "daily") {
         let streak = 0;
-        const cursor = new Date(today);
-        while (completionSet.has(toDateStr(cursor))) {
+        let cursor = todayStr;
+        if (completionSet.has(cursor)) streak++;
+        cursor = addDays(cursor, -1);
+        while (completionSet.has(cursor)) {
             streak++;
-            cursor.setDate(cursor.getDate() - 1);
+            cursor = addDays(cursor, -1);
         }
         return streak;
     }
@@ -27,18 +36,19 @@ function calcStreak(completionSet, habit) {
         const freqDays = habit?.frequency_days || [];
         if (!freqDays.length) return 0;
         let streak = 0;
-        const cursor = new Date(today);
+        let cursor = todayStr;
+        if (freqDays.includes(weekdayIso(cursor))) {
+            if (completionSet.has(cursor)) streak++;
+            cursor = addDays(cursor, -1);
+        }
         for (let i = 0; i < 400; i++) {
-            // JS getDay(): 0=Sun → ISO: 0=Mon
-            const jsDay = cursor.getDay();
-            const isoDay = jsDay === 0 ? 6 : jsDay - 1;
-            if (!freqDays.includes(isoDay)) {
-                cursor.setDate(cursor.getDate() - 1);
+            if (!freqDays.includes(weekdayIso(cursor))) {
+                cursor = addDays(cursor, -1);
                 continue;
             }
-            if (completionSet.has(toDateStr(cursor))) {
+            if (completionSet.has(cursor)) {
                 streak++;
-                cursor.setDate(cursor.getDate() - 1);
+                cursor = addDays(cursor, -1);
             } else {
                 break;
             }
@@ -48,31 +58,16 @@ function calcStreak(completionSet, habit) {
 
     if (ft === "times_per_week") {
         const target = habit?.frequency_target || 1;
-        // Find Monday of current week
-        const dayOfWeek = today.getDay();
-        const diffToMon = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-        const monday = new Date(today);
-        monday.setDate(today.getDate() - diffToMon);
-        // Check current week
-        const currentWeekDates = Array.from({ length: 7 }, (_, i) => {
-            const d = new Date(monday); d.setDate(monday.getDate() + i);
-            return toDateStr(d);
-        });
-        const currentCount = currentWeekDates.filter(d => completionSet.has(d)).length;
-        let streak = currentCount >= target ? 1 : 0;
-        // Walk back previous weeks
+        const weekCount = (mondayStr) => {
+            let n = 0;
+            for (let d = 0; d < 7; d++) if (completionSet.has(addDays(mondayStr, d))) n++;
+            return n;
+        };
+        let monday = isoWeekMonday(todayStr);
+        let streak = weekCount(monday) >= target ? 1 : 0;
         for (let w = 1; w <= 52; w++) {
-            const wMonday = new Date(monday);
-            wMonday.setDate(monday.getDate() - w * 7);
-            const wDates = Array.from({ length: 7 }, (_, i) => {
-                const d = new Date(wMonday); d.setDate(wMonday.getDate() + i);
-                return toDateStr(d);
-            });
-            if (wDates.filter(d => completionSet.has(d)).length >= target) {
-                streak++;
-            } else {
-                break;
-            }
+            if (weekCount(addDays(monday, -7 * w)) >= target) streak++;
+            else break;
         }
         return streak;
     }
@@ -96,26 +91,11 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
     const [loading, setLoading] = useState(false);
 
     // ── Derived stats ──────────────────────────────────────────────────────
-    const streak       = calcStreak(completionDates, habit);
-    const totalCount   = completionDates.size;
-
-    const today        = new Date(); today.setHours(0,0,0,0);
-    const todayStr     = toDateStr(today);
-    const sevenDaysAgo = new Date(today); sevenDaysAgo.setDate(today.getDate() - 6);
-
-    // ── Recent 7-day strip ─────────────────────────────────────────────────
-    const recentDays = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(sevenDaysAgo);
-        d.setDate(sevenDaysAgo.getDate() + i);
-        const str = toDateStr(d);
-        return {
-            str,
-            label: d.toLocaleDateString("en-US", { weekday: "short" }).slice(0, 2),
-            dayNum: d.getDate(),
-            done: completionDates.has(str),
-            isToday: str === todayStr,
-        };
-    });
+    // NOTE: a `recentDays` 7-day strip used to be computed here on every render
+    // and was referenced nowhere in the JSX. Removed.
+    const todayStr   = useToday();
+    const streak     = calcStreak(completionDates, habit, todayStr);
+    const totalCount = completionDates.size;
 
     // ── Fetch history ──────────────────────────────────────────────────────
     const fetchHistory = useCallback(async () => {
@@ -144,13 +124,11 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
 
     // ── Toggle completion ──────────────────────────────────────────────────
     const toggleDay = async (dateStr) => {
-        const target = new Date(dateStr + "T00:00:00");
-        if (target > today) return;
-
-        // Only past 7 days + today are editable (same as the main dashboard)
-        const diffDays = Math.floor((today - target) / 86400000);
-        if (diffDays > 30) {
-            toast.error("You can only edit entries from the past 30 days");
+        // Days elapsed since the target: negative means the future.
+        const age = daysBetween(dateStr, todayStr);
+        if (age < 0) return;
+        if (age > MAX_BACKFILL_DAYS) {
+            toast.error(`You can only edit entries from the past ${MAX_BACKFILL_DAYS} days`);
             return;
         }
 
@@ -176,26 +154,27 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
     };
 
     // ── Calendar grid ──────────────────────────────────────────────────────
+    // Weeks start on MONDAY. The grid used to start on Sunday while every server
+    // week calculation (frequency_days, times_per_week streaks, day-of-week
+    // patterns) is ISO Monday-first, so a "3x per week" habit was scored against
+    // a different week than the one drawn here.
     const generateCalendarDays = () => {
         const y = currentMonth.getFullYear();
         const m = currentMonth.getMonth();
-        const firstDOW = new Date(y, m, 1).getDay();
-        const lastDay  = new Date(y, m + 1, 0).getDate();
+        const pad = (n) => String(n).padStart(2, "0");
+        const monthStr = `${y}-${pad(m + 1)}`;
+        const lastDay = new Date(y, m + 1, 0).getDate();
         const freqDays = habit?.frequency_days || [];
         const ft = habit?.frequency_type || "daily";
+
         const days = [];
-        for (let i = 0; i < firstDOW; i++) days.push(null);
+        for (let i = 0; i < weekdayIso(`${monthStr}-01`); i++) days.push(null);
         for (let d = 1; d <= lastDay; d++) {
-            const date    = new Date(y, m, d);
-            const dateStr = toDateStr(date);
-            const diffMs  = date - today;
-            const diffD   = Math.floor(diffMs / 86400000);
-            const isFuture = diffD > 0;
-            const isEditable = !isFuture && diffD >= -30;
-            // Determine if this day is scheduled (for rest-day shading)
-            const jsDay = date.getDay(); // 0=Sun
-            const isoDay = jsDay === 0 ? 6 : jsDay - 1; // 0=Mon
-            const isRestDay = ft === "specific_days" && !freqDays.includes(isoDay);
+            const dateStr = `${monthStr}-${pad(d)}`;
+            const age = daysBetween(dateStr, todayStr);   // >0 past, <0 future
+            const isFuture = age < 0;
+            const isEditable = !isFuture && age <= MAX_BACKFILL_DAYS;
+            const isRestDay = ft === "specific_days" && !freqDays.includes(weekdayIso(dateStr));
             days.push({ day: d, dateStr, isFuture, isEditable, isToday: dateStr === todayStr, isRestDay });
         }
         return days;
@@ -204,7 +183,7 @@ export default function HabitDetailModal({ habit, isOpen, onClose, onUpdate }) {
     if (!isOpen || !habit) return null;
 
     const days           = generateCalendarDays();
-    const weekDays       = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+    const weekDays       = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
     const nowMonth       = new Date(); nowMonth.setDate(1);
     const isCurrentMonth = currentMonth.getMonth() === nowMonth.getMonth() &&
                            currentMonth.getFullYear() === nowMonth.getFullYear();

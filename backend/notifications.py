@@ -51,7 +51,8 @@ async def send_welcome_email(email: str, name: str):
       </div>
       <a href="{APP_URL}" style="display: inline-block; background: #F97316; color: white; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 15px;">Start Your First Day →</a>
       <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
-        You'll receive daily reminders at 8PM and weekly summaries on Sundays.<br/>
+        Daily reminders start at 8PM and weekly summaries arrive on Sundays — both<br/>
+        adjustable, along with which days they run, in Settings.<br/>
         Manage preferences in <a href="{APP_URL}/settings" style="color: #F97316;">Settings</a>.
       </p>
     </div>"""
@@ -69,9 +70,8 @@ async def send_push(user: dict, title: str, body: str, url: str = "/"):
     if not VAPID_PUBLIC_KEY:
         raise ValueError("VAPID_PUBLIC_KEY is not configured in the server environment.")
 
-    from pywebpush import webpush, WebPushException
+    from pywebpush import webpush
     from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.backends import default_backend
     import base64
     

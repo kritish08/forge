@@ -1,6 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from collections import defaultdict
+from typing import Optional
 
 LEVEL_THRESHOLDS = [0, 100, 250, 500, 900, 1500, 2500, 4000, 6000, 9000]
 
@@ -17,6 +18,30 @@ def get_level_progress(pts: int) -> dict:
     span = max(nxt - cur, 1)
     return {"level": lvl, "total_points": pts, "current_threshold": cur,
             "next_threshold": nxt, "progress_pct": round((pts - cur) / span * 100, 1)}
+
+# How far back a user may backfill a check-in. The frontend habit calendar
+# enforced this on its own, which meant a hand-rolled request could set any date
+# at all — including future ones — and inflate points, streaks and achievements.
+MAX_BACKFILL_DAYS = 30
+
+
+def validate_completion_date(date_str: str, today_str: str,
+                             max_backfill_days: int = MAX_BACKFILL_DAYS):
+    """Check a client-supplied check-in date against the user's own today.
+
+    Returns (ok, reason). Both dates are 'YYYY-MM-DD' in the user's timezone."""
+    try:
+        target = datetime.strptime(date_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return False, "Date must be in YYYY-MM-DD format"
+    today = datetime.strptime(today_str, "%Y-%m-%d")
+    delta = (today - target).days
+    if delta < 0:
+        return False, "Cannot check in for a future date"
+    if delta > max_backfill_days:
+        return False, f"Cannot check in more than {max_backfill_days} days in the past"
+    return True, ""
+
 
 def get_user_today(user: dict) -> str:
     """Get the current date string (YYYY-MM-DD) mapped to the user's timezone."""
@@ -44,29 +69,46 @@ def is_day_scheduled(habit: dict, date_obj) -> bool:
 
 def compute_global_streak(all_completions: list, habits: list, today_str: str) -> int:
     """Consecutive days where ALL scheduled habits were completed.
-    Days with zero scheduled habits are skipped (don't break or extend)."""
+
+    Days with zero scheduled habits are skipped (don't break or extend).
+
+    TODAY IS A GRACE DAY. The day in progress can still be finished, so an
+    incomplete today does not break the streak — it simply doesn't extend it yet.
+    Without this, a user with a 30-day streak saw "0 days" from midnight until
+    they ticked their last habit, every single morning. Any *earlier* incomplete
+    day still ends the streak."""
     if not habits or not all_completions:
         return 0
     comp_by_date = defaultdict(set)
     for c in all_completions:
         comp_by_date[c["date"]].add(c["habit_id"])
+
+    def day_complete(cursor) -> Optional[bool]:
+        """True/False if the day was completed, or None if nothing was scheduled."""
+        scheduled = [h for h in habits if is_habit_scheduled_today(h, cursor.weekday())]
+        if not scheduled:
+            return None
+        scheduled_ids = {h["habit_id"] for h in scheduled}
+        return scheduled_ids.issubset(comp_by_date.get(cursor.strftime("%Y-%m-%d"), set()))
+
     streak = 0
     cursor = datetime.strptime(today_str, "%Y-%m-%d")
+
+    # Today: counts when complete, is forgiven when not.
+    today_state = day_complete(cursor)
+    if today_state:
+        streak += 1
+    cursor -= timedelta(days=1)
+
+    # Every prior day must hold.
     for _ in range(400):  # max lookback
-        ds = cursor.strftime("%Y-%m-%d")
-        weekday = cursor.weekday()
-        scheduled = [h for h in habits if is_habit_scheduled_today(h, weekday)]
-        if not scheduled:
-            # No habits scheduled this day — skip it, don't break streak
-            cursor -= timedelta(days=1)
-            continue
-        scheduled_ids = {h["habit_id"] for h in scheduled}
-        completed_ids = comp_by_date.get(ds, set())
-        if scheduled_ids.issubset(completed_ids):
-            streak += 1
-            cursor -= timedelta(days=1)
-        else:
+        state = day_complete(cursor)
+        if state is False:
             break
+        if state is True:
+            streak += 1
+        # state is None -> nothing scheduled, skip without breaking
+        cursor -= timedelta(days=1)
     return streak
 
 def compute_habit_streak(completions: list, habit: dict, today_str: str) -> int:
@@ -76,8 +118,13 @@ def compute_habit_streak(completions: list, habit: dict, today_str: str) -> int:
     ft = habit.get("frequency_type", "daily")
     dates_set = set(c["date"] for c in completions)
 
+    # Today is a grace day here too — see compute_global_streak. An unfinished
+    # today doesn't extend the streak, but it doesn't end it either.
     if ft == "daily":
         streak, cursor = 0, datetime.strptime(today_str, "%Y-%m-%d")
+        if cursor.strftime("%Y-%m-%d") in dates_set:
+            streak += 1
+        cursor -= timedelta(days=1)
         while cursor.strftime("%Y-%m-%d") in dates_set:
             streak += 1
             cursor -= timedelta(days=1)
@@ -88,6 +135,11 @@ def compute_habit_streak(completions: list, habit: dict, today_str: str) -> int:
         if not freq_days:
             return 0
         streak, cursor = 0, datetime.strptime(today_str, "%Y-%m-%d")
+        # Grace: if today is a scheduled day and isn't done yet, step past it.
+        if cursor.weekday() in freq_days:
+            if cursor.strftime("%Y-%m-%d") in dates_set:
+                streak += 1
+            cursor -= timedelta(days=1)
         for _ in range(400):
             if cursor.weekday() not in freq_days:
                 cursor -= timedelta(days=1)

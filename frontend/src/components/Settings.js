@@ -1,17 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
 import { toast } from "sonner";
 import ForgeHeader from "./ForgeHeader";
 import { FrequencyPicker, FrequencyBadge } from "./FrequencyPicker";
 
+const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
 export default function Settings() {
   const { user, logout, refreshUser } = useAuth();
   const [habits, setHabits] = useState([]);
   const [editingHabit, setEditingHabit] = useState(null);
   const [newHabit, setNewHabit] = useState({ name: "", priority: 1, context: "", frequency_type: "daily", frequency_days: [], frequency_target: 7 });
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
@@ -82,32 +83,12 @@ export default function Settings() {
     }
   };
 
-  const saveApiKey = async () => {
-    if (!apiKey.trim()) return;
-    setSaving(true);
-    try {
-      await api.put("/user/settings", { azure_api_key: apiKey, ai_provider: "azure" });
-      await refreshUser();
-      setApiKey("");
-      setShowApiKey(false);
-      toast.success("API key saved securely!");
-    } catch {
-      toast.error("Failed to save API key.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const removeApiKey = async () => {
-    if (!window.confirm("Remove your API key? AI insights will use fallback templates.")) return;
-    try {
-      await api.put("/user/settings", { azure_api_key: " ", ai_provider: "none" });
-      await refreshUser();
-      toast.success("API key removed.");
-    } catch {
-      toast.error("Failed to remove API key.");
-    }
-  };
+  // NOTE: saveApiKey/removeApiKey used to live here. They PUT `azure_api_key`
+  // and `ai_provider` to /user/settings — fields UserSettingsUpdate does not
+  // declare, so pydantic dropped them, the endpoint returned 200, and the UI
+  // reported "API key saved securely!" while storing nothing. The AI tab that
+  // called them was replaced by the server-authenticated status panel, so this
+  // was unreachable dead code on top of being broken.
 
   const testApiKey = async () => {
     setSaving(true);
@@ -149,6 +130,7 @@ export default function Settings() {
       });
 
       await api.post("/notifications/subscribe", { subscription: subscription.toJSON() });
+      await saveSettings({ push_notifications_enabled: true });
       setPushSubscribed(true);
       toast.success("Push notifications enabled! 🔔");
     } catch (err) {
@@ -164,6 +146,11 @@ export default function Settings() {
       if (subscription) {
         await subscription.unsubscribe();
       }
+      // The browser-side unsubscribe was all this used to do, so the server kept
+      // a subscription it could no longer deliver to and went on pushing at a
+      // dead endpoint every day. Clear it server-side too.
+      await api.delete("/notifications/subscribe");
+      await saveSettings({ push_notifications_enabled: false });
       setPushSubscribed(false);
       toast.success("Push notifications disabled");
     } catch {
@@ -193,6 +180,29 @@ export default function Settings() {
 
   // Single entry point for timezone / notification-schedule writes so a failed
   // PUT surfaces an error toast instead of silently leaving the UI out of sync.
+  // Notification rules are edited locally and persisted on a debounce. Each
+  // keystroke in <input type="time"> fires onChange, and this used to PUT
+  // /user/settings and then refetch /auth/me for every one of them.
+  const [rules, setRules] = useState(user?.notification_rules || []);
+  const rulesTimer = useRef(null);
+
+  useEffect(() => {
+    setRules(user?.notification_rules || []);
+  }, [user?.notification_rules]);
+
+  useEffect(() => () => clearTimeout(rulesTimer.current), []);
+
+  const updateRules = (next, { immediate = false, message } = {}) => {
+    setRules(next);
+    clearTimeout(rulesTimer.current);
+    if (immediate) {
+      saveSettings({ notification_rules: next }, message);
+    } else {
+      rulesTimer.current = setTimeout(
+        () => saveSettings({ notification_rules: next }, message), 800);
+    }
+  };
+
   const saveSettings = async (payload, successMsg) => {
     try {
       await api.put("/user/settings", payload);
@@ -554,47 +564,78 @@ export default function Settings() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-sm font-bold text-gray-900 dark:text-white font-manrope block">Notification Schedules</label>
-                    <button 
-                      onClick={() => {
-                        const current = user?.notification_rules || [];
-                        saveSettings({ notification_rules: [...current, { days: [0,1,2,3,4,5,6], time: "08:00" }] }, "Added schedule");
-                      }}
-                      className="text-orange-500 hover:bg-orange-50 p-1.5 rounded-lg transition-colors flex items-center gap-1 text-sm font-bold font-manrope"
+                    <button
+                      onClick={() => updateRules(
+                        [...rules, { days: [0, 1, 2, 3, 4, 5, 6], time: "08:00" }],
+                        { immediate: true, message: "Added schedule" })}
+                      className="text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950/30 p-1.5 rounded-lg transition-colors flex items-center gap-1 text-sm font-bold font-manrope"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4"/></svg> Add
                     </button>
                   </div>
-                  
-                  {(user?.notification_rules || [{ time: "20:00" }]).map((rule, idx) => (
-                    <div key={idx} className="flex gap-2 items-center">
-                      <div className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl flex items-center px-4 overflow-hidden focus-within:ring-2 focus-within:ring-orange-500">
-                        <span className="text-gray-500 dark:text-gray-500 text-sm font-bold font-chivo mr-2">Time:</span>
-                        <input 
-                          type="time" 
-                          value={rule.time || "20:00"}
-                          onChange={(e) => {
-                            const rules = [...(user?.notification_rules || [])];
-                            if (!rules[idx]) rules[idx] = { days: [0,1,2,3,4,5,6] };
-                            rules[idx].time = e.target.value;
-                            saveSettings({ notification_rules: rules }, "Schedule updated");
-                          }}
-                          className="flex-1 bg-transparent py-3 text-sm font-manrope focus:outline-none"
-                        />
+
+                  {rules.map((rule, idx) => {
+                    const days = rule.days || [0, 1, 2, 3, 4, 5, 6];
+                    const setRule = (patch, opts) => updateRules(
+                      rules.map((r, i) => (i === idx ? { ...r, ...patch } : r)), opts);
+                    return (
+                      <div key={idx} className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-3">
+                        <div className="flex gap-2 items-center">
+                          <div className="flex-1 flex items-center gap-2">
+                            <span className="text-gray-500 dark:text-gray-400 text-sm font-bold font-chivo">Time</span>
+                            <input
+                              type="time"
+                              value={rule.time || "20:00"}
+                              onChange={(e) => setRule({ time: e.target.value })}
+                              className="flex-1 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            />
+                          </div>
+                          <button
+                            onClick={() => updateRules(rules.filter((_, i) => i !== idx),
+                                                       { immediate: true, message: "Schedule removed" })}
+                            className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+                            title="Remove schedule"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                          </button>
+                        </div>
+
+                        {/* Per-day selection. The backend has always filtered
+                            rules by weekday (logic.due_daily_slot), but the UI
+                            only ever wrote every day, so "weekdays only" was
+                            impossible despite being fully implemented. */}
+                        <div className="flex gap-1.5">
+                          {DAY_LABELS.map((label, d) => {
+                            const on = days.includes(d);
+                            return (
+                              <button
+                                key={d}
+                                type="button"
+                                aria-pressed={on}
+                                aria-label={DAY_NAMES[d]}
+                                onClick={() => {
+                                  const next = on ? days.filter((x) => x !== d) : [...days, d].sort((a, b) => a - b);
+                                  if (next.length === 0) {
+                                    toast.error("Pick at least one day, or remove the schedule.");
+                                    return;
+                                  }
+                                  setRule({ days: next }, { immediate: true });
+                                }}
+                                className={`flex-1 h-8 rounded-lg text-xs font-bold font-chivo transition-colors ${
+                                  on
+                                    ? "bg-orange-500 text-white"
+                                    : "bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500"
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <button 
-                        onClick={() => {
-                          const rules = [...(user?.notification_rules || [])];
-                          rules.splice(idx, 1);
-                          saveSettings({ notification_rules: rules }, "Schedule removed");
-                        }}
-                        className="p-3 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
-                        title="Remove schedule"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                      </button>
-                    </div>
-                  ))}
-                  {user?.notification_rules?.length === 0 && (
+                    );
+                  })}
+                  {rules.length === 0 && (
                     <p className="text-sm text-gray-500 dark:text-gray-500 italic py-2">No schedules set. You will not receive any daily reminders.</p>
                   )}
                   <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">

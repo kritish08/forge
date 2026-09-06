@@ -1,35 +1,27 @@
-import os
+import hashlib
 from typing import Optional
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, Request
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from cryptography.fernet import Fernet
 from config import SECRET_KEY, ALGORITHM
 from db import db
 
-ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", "")
-fernet = None
-if ENCRYPTION_KEY:
-    try:
-        fernet = Fernet(ENCRYPTION_KEY.encode())
-    except Exception:
-        pass
+# NOTE: encrypt_value/decrypt_value (Fernet, keyed on ENCRYPTION_KEY) used to live
+# here. They were the storage layer for the per-user Azure key, which the settings
+# model no longer accepts and the settings UI no longer offers — so they were
+# called from nowhere. Removed along with the rest of that dead path.
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def encrypt_value(v: str) -> str:
-    if fernet and v:
-        return fernet.encrypt(v.encode()).decode()
-    return v
 
-def decrypt_value(v: str) -> str:
-    if fernet and v:
-        try:
-            return fernet.decrypt(v.encode()).decode()
-        except Exception:
-            return v
-    return v
+def hash_token(token: str) -> str:
+    """SHA-256 of a single-use token, for storing a lookup key instead of the
+    token itself. Password-reset tokens were previously written to Mongo in the
+    clear, so read access to that collection was enough to complete any pending
+    reset inside its one-hour window. These tokens are already high-entropy JWTs,
+    so a plain digest is sufficient — no salt or work factor needed."""
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 # ── JWT Auth ────────────────────────────────────────────────────────────────────

@@ -75,6 +75,50 @@ def test_global_streak_requires_all_scheduled_habits():
     assert logic.compute_global_streak(comps, habits, "2026-01-15") == 1
 
 
+def test_global_streak_today_is_a_grace_day():
+    """An unfinished today must not zero out a streak earned on previous days."""
+    habits = [{"habit_id": "h1", "frequency_type": "daily"}]
+    # 01-14 and 01-13 done, today (01-15) not yet.
+    comps = [_comp("h1", "2026-01-14"), _comp("h1", "2026-01-13")]
+    assert logic.compute_global_streak(comps, habits, "2026-01-15") == 2
+    # Completing today extends it rather than starting over.
+    comps.append(_comp("h1", "2026-01-15"))
+    assert logic.compute_global_streak(comps, habits, "2026-01-15") == 3
+
+
+def test_global_streak_grace_applies_only_to_today():
+    """Yesterday is not forgiven — a gap before today still ends the streak."""
+    habits = [{"habit_id": "h1", "frequency_type": "daily"}]
+    # today missing (forgiven), yesterday missing (fatal), 01-13 done.
+    comps = [_comp("h1", "2026-01-13")]
+    assert logic.compute_global_streak(comps, habits, "2026-01-15") == 0
+
+
+def test_global_streak_grace_with_partial_today():
+    """Today counts only when EVERY scheduled habit is done; partial is forgiven."""
+    habits = [{"habit_id": "h1", "frequency_type": "daily"},
+              {"habit_id": "h2", "frequency_type": "daily"}]
+    comps = [_comp("h1", "2026-01-15"),                      # today: only h1
+             _comp("h1", "2026-01-14"), _comp("h2", "2026-01-14")]
+    assert logic.compute_global_streak(comps, habits, "2026-01-15") == 1
+
+
+def test_habit_streak_daily_grace_day():
+    habit = {"habit_id": "h1", "frequency_type": "daily"}
+    comps = [_comp("h1", "2026-01-14"), _comp("h1", "2026-01-13")]
+    assert logic.compute_habit_streak(comps, habit, "2026-01-15") == 2
+    assert logic.compute_habit_streak(comps + [_comp("h1", "2026-01-15")],
+                                      habit, "2026-01-15") == 3
+
+
+def test_habit_streak_specific_days_grace_day():
+    """Today is Thu (weekday 3) and scheduled but unfinished — prior Tue/Wed hold."""
+    habit = {"habit_id": "h1", "frequency_type": "specific_days",
+             "frequency_days": [1, 2, 3]}          # Tue, Wed, Thu
+    comps = [_comp("h1", "2026-01-14"), _comp("h1", "2026-01-13")]  # Wed, Tue
+    assert logic.compute_habit_streak(comps, habit, "2026-01-15") == 2
+
+
 def test_global_streak_skips_unscheduled_days():
     # Habit only scheduled on Mondays; non-Mondays are skipped, not broken.
     habits = [{"habit_id": "h1", "frequency_type": "specific_days", "frequency_days": [0]}]
@@ -214,3 +258,27 @@ def test_time_patterns_buckets():
     ]
     res = logic.compute_time_patterns(comps, timezone.utc)
     assert res == {"early": 25.0, "morning": 25.0, "afternoon": 25.0, "evening": 25.0}
+
+
+# ── Completion date validation ───────────────────────────────────────────────
+def test_validate_completion_date_accepts_today_and_recent_past():
+    assert logic.validate_completion_date("2026-01-15", "2026-01-15")[0] is True
+    assert logic.validate_completion_date("2026-01-01", "2026-01-15")[0] is True
+    # exactly on the boundary
+    assert logic.validate_completion_date("2025-12-16", "2026-01-15")[0] is True
+
+
+def test_validate_completion_date_rejects_future():
+    ok, reason = logic.validate_completion_date("2026-01-16", "2026-01-15")
+    assert ok is False and "future" in reason.lower()
+
+
+def test_validate_completion_date_rejects_ancient_backfill():
+    ok, reason = logic.validate_completion_date("2025-12-15", "2026-01-15")
+    assert ok is False and "30 days" in reason
+
+
+def test_validate_completion_date_rejects_malformed():
+    for bad in ("15-01-2026", "not-a-date", "", None, "2026-13-45"):
+        ok, reason = logic.validate_completion_date(bad, "2026-01-15")
+        assert ok is False and "YYYY-MM-DD" in reason

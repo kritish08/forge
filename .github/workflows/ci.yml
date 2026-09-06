@@ -39,3 +39,36 @@ jobs:
       - name: Run pytest
         working-directory: backend
         run: pytest
+
+  frontend-tests:
+    name: Frontend tests (jest) + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+
+      - name: Run tests
+        working-directory: frontend
+        run: yarn test --watchAll=false
+        env:
+          CI: true
+
+      - name: Build
+        working-directory: frontend
+        # CI=true turns lint warnings into errors, so an unused import or a bad
+        # hook dependency fails here rather than shipping.
+        run: yarn build
+        env:
+          CI: true
+          GENERATE_SOURCEMAP: "false"
+          REACT_APP_BACKEND_URL: http://localhost:8001

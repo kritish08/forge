@@ -74,7 +74,9 @@ export default function AICoach() {
       setReflection("");
       toast.success("Insight generated!");
     } catch {
-      toast.error("Failed to generate insight. Check your API key in Settings.");
+      // Was "Check your API key in Settings." — there is no API key field in
+      // Settings; FORGE authenticates to Azure with one server-side credential.
+      toast.error("Couldn't generate an insight. Please try again in a moment.");
     } finally {
       setGenerating(false);
     }

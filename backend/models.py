@@ -53,11 +53,17 @@ class InsightRequest(BaseModel):
     reflection: str = ""
 
 class UserSettingsUpdate(BaseModel):
+    # NOTE: pydantic drops unknown keys silently, so a field missing from this
+    # model makes its endpoint a no-op that still returns 200. That is exactly
+    # how the old `azure_api_key` write appeared to succeed while saving nothing.
     mode: Optional[str] = None
     direct_mode_reason: Optional[str] = None
     onboarding_completed: Optional[bool] = None
     email_daily_reminder: Optional[bool] = None
     email_weekly_summary: Optional[bool] = None
+    # The scheduler has always gated push on this, but it was in no model and no
+    # UI, so it was permanently True and the check was decorative.
+    push_notifications_enabled: Optional[bool] = None
     timezone: Optional[str] = None
     notification_rules: Optional[list] = None
 

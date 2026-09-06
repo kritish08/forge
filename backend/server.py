@@ -11,9 +11,9 @@ from zoneinfo import ZoneInfo
 from config import (limiter, logger, AZURE_ENDPOINT, AZURE_MODEL, AZURE_API_KEY, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY_B64, SMTP_HOST, SMTP_USER, APP_URL, CORS_ORIGINS)
 from db import client, db, _ensure_indexes
 from models import RegisterRequest, LoginRequest, PasswordResetRequest, PasswordReset, HabitCreate, HabitUpdate, CompletionCreate, MoodCreate, InsightRequest, UserSettingsUpdate, PushSubscribeRequest, DeleteAccountRequest
-from security import create_token, decode_token, get_current_user, pwd_context
-from logic import (get_level_progress, get_user_today, is_habit_scheduled_today, compute_global_streak, aggregate_consistency, compute_dow_patterns, compute_time_patterns)
-from achievements import check_and_award_achievements
+from security import create_token, decode_token, get_current_user, pwd_context, hash_token
+from logic import (get_level_progress, get_user_today, is_habit_scheduled_today, compute_global_streak, aggregate_consistency, compute_dow_patterns, compute_time_patterns, validate_completion_date)
+from achievements import check_and_award_achievements, ACHIEVEMENT_CATALOG
 from notifications import scheduler, send_email, send_welcome_email, send_push, daily_reminder_job, weekly_summary_job
 from ai import generate_ai_insight
 
@@ -65,6 +65,7 @@ async def register(data: RegisterRequest, request: Request, response: Response, 
         "mode": "supportive", "direct_mode_reason": "",
         "onboarding_completed": False, "push_subscription": None,
         "email_daily_reminder": True, "email_weekly_summary": True,
+        "push_notifications_enabled": True,
         "timezone": data.timezone,
         "notification_rules": [{"days": [0,1,2,3,4,5,6], "time": "20:00"}],
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -75,8 +76,8 @@ async def register(data: RegisterRequest, request: Request, response: Response, 
     access_token = create_token(user_id, "access", 60 * 24)
     refresh_token = create_token(user_id, "refresh", 60 * 24 * 30)
     await db.refresh_tokens.insert_one({"token": refresh_token, "user_id": user_id,
-                                         "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
-                                         "created_at": datetime.now(timezone.utc).isoformat()})
+                                         "expires_at": datetime.now(timezone.utc) + timedelta(days=30),
+                                         "created_at": datetime.now(timezone.utc)})
 
     response.set_cookie("refresh_token", refresh_token, httponly=True, secure=True,
                         samesite="none", path="/", max_age=30 * 24 * 60 * 60)
@@ -98,8 +99,8 @@ async def login(data: LoginRequest, request: Request, response: Response):
     access_token = create_token(user["user_id"], "access", 60 * 24)
     refresh_token = create_token(user["user_id"], "refresh", 60 * 24 * 30)
     await db.refresh_tokens.insert_one({"token": refresh_token, "user_id": user["user_id"],
-                                         "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
-                                         "created_at": datetime.now(timezone.utc).isoformat()})
+                                         "expires_at": datetime.now(timezone.utc) + timedelta(days=30),
+                                         "created_at": datetime.now(timezone.utc)})
 
     response.set_cookie("refresh_token", refresh_token, httponly=True, secure=True,
                         samesite="none", path="/", max_age=30 * 24 * 60 * 60)
@@ -132,8 +133,8 @@ async def refresh(request: Request, response: Response):
     new_refresh = create_token(user_id, "refresh", 60 * 24 * 30)
     await db.refresh_tokens.delete_one({"token": rt})
     await db.refresh_tokens.insert_one({"token": new_refresh, "user_id": user_id,
-                                         "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
-                                         "created_at": datetime.now(timezone.utc).isoformat()})
+                                         "expires_at": datetime.now(timezone.utc) + timedelta(days=30),
+                                         "created_at": datetime.now(timezone.utc)})
 
     response.set_cookie("refresh_token", new_refresh, httponly=True, secure=True,
                         samesite="none", path="/", max_age=30 * 24 * 60 * 60)
@@ -173,13 +174,15 @@ async def forgot_password(data: PasswordResetRequest, request: Request, backgrou
     # Generate reset token (valid for 1 hour)
     reset_token = create_token(user["user_id"], "password_reset", 60)
     
-    # Store token in DB
+    # Store only a digest of the token — the emailed token is the secret, and it
+    # should not be recoverable from the database. expires_at is a real datetime
+    # so the TTL index in db.py can reap these automatically.
     await db.password_resets.insert_one({
-        "token": reset_token,
+        "token_hash": hash_token(reset_token),
         "user_id": user["user_id"],
         "email": email,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
         "used": False
     })
     
@@ -219,12 +222,16 @@ async def reset_password(data: PasswordReset, request: Request):
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
     
     # Check if token exists and hasn't been used
-    reset_doc = await db.password_resets.find_one({"token": data.token, "used": False}, {"_id": 0})
+    token_hash = hash_token(data.token)
+    reset_doc = await db.password_resets.find_one({"token_hash": token_hash, "used": False}, {"_id": 0})
     if not reset_doc:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
-    
-    # Check expiration
-    expires_at = datetime.fromisoformat(reset_doc["expires_at"].replace("Z", "+00:00"))
+
+    # Check expiration. Tolerates the pre-hashing records that stored this as an
+    # ISO string, so resets issued before this change still verify correctly.
+    expires_at = reset_doc["expires_at"]
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if datetime.now(timezone.utc) > expires_at:
@@ -235,7 +242,7 @@ async def reset_password(data: PasswordReset, request: Request):
     await db.users.update_one({"user_id": user_id}, {"$set": {"password_hash": new_hash}})
     
     # Mark token as used
-    await db.password_resets.update_one({"token": data.token}, {"$set": {"used": True}})
+    await db.password_resets.update_one({"token_hash": token_hash}, {"$set": {"used": True}})
     
     # Invalidate all refresh tokens for security
     await db.refresh_tokens.delete_many({"user_id": user_id})
@@ -262,6 +269,17 @@ async def subscribe_push(data: PushSubscribeRequest, current_user=Depends(get_cu
     await db.users.update_one({"user_id": current_user["user_id"]},
                                {"$set": {"push_subscription": data.subscription}})
     return {"message": "Subscribed to push notifications"}
+
+@api_router.delete("/notifications/subscribe")
+async def unsubscribe_push(current_user=Depends(get_current_user)):
+    """Clear the stored push endpoint.
+
+    The client used to call subscription.unsubscribe() in the browser and stop
+    there, so the server kept a subscription it could no longer deliver to and
+    went on pushing at a dead endpoint every day."""
+    await db.users.update_one({"user_id": current_user["user_id"]},
+                               {"$set": {"push_subscription": None}})
+    return {"message": "Unsubscribed from push notifications"}
 
 @api_router.post("/notifications/test")
 async def test_notification(current_user=Depends(get_current_user)):
@@ -336,17 +354,34 @@ async def delete_habit(habit_id: str, current_user=Depends(get_current_user)):
 
 # ── Completion Routes ───────────────────────────────────────────────────────────
 @api_router.get("/completions")
-async def get_completions(date: Optional[str] = None, habit_id: Optional[str] = None, current_user=Depends(get_current_user)):
+async def get_completions(date: Optional[str] = None, habit_id: Optional[str] = None,
+                          since: Optional[str] = None, current_user=Depends(get_current_user)):
+    """List completions, optionally narrowed.
+
+    `since` (YYYY-MM-DD, inclusive) exists so callers that only need a recent
+    window stop pulling the entire history — the dashboard's weekly progress dots
+    were fetching every completion the user had ever logged in order to count the
+    current week."""
     q = {"user_id": current_user["user_id"]}
     if date:
         q["date"] = date
+    if since:
+        q["date"] = {"$gte": since}
     if habit_id:
         q["habit_id"] = habit_id
     return await db.completions.find(q, {"_id": 0}).to_list(10000)
 
 @api_router.post("/completions")
 async def create_completion(data: CompletionCreate, current_user=Depends(get_current_user)):
-    target_date = data.date if data.date else get_user_today(current_user)
+    today = get_user_today(current_user)
+    target_date = data.date if data.date else today
+    # `date` comes straight from the client. The 30-day window used to be enforced
+    # only in the habit calendar UI, so anything could be posted here — including
+    # future dates, which silently inflated points, streaks and achievements.
+    if data.date:
+        ok, reason = validate_completion_date(data.date, today)
+        if not ok:
+            raise HTTPException(status_code=400, detail=reason)
     existing = await db.completions.find_one(
         {"user_id": current_user["user_id"], "habit_id": data.habit_id, "date": target_date}, {"_id": 0})
     if existing:
@@ -434,7 +469,6 @@ async def get_stats(current_user=Depends(get_current_user)):
     local_now = datetime.now(tz)
     today = local_now.strftime("%Y-%m-%d")
     today_weekday = local_now.weekday()
-    start_14 = (local_now - timedelta(days=14)).strftime("%Y-%m-%d")
 
     all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
     habits = await db.habits.find({"user_id": user_id, "is_active": True}, {"_id": 0}).to_list(100)
@@ -545,7 +579,6 @@ async def generate_insight(data: InsightRequest, request: Request, current_user=
     except Exception:
         tz = timezone.utc
     local_now = datetime.now(tz)
-    start_14 = (local_now - timedelta(days=14)).strftime("%Y-%m-%d")
     start_7 = (local_now - timedelta(days=7)).strftime("%Y-%m-%d")
 
     all_comps = await db.completions.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
@@ -590,6 +623,15 @@ async def get_insights(current_user=Depends(get_current_user)):
 
 
 # ── Achievement Routes ──────────────────────────────────────────────────────────
+@api_router.get("/achievements/catalog")
+async def get_achievement_catalog():
+    """The full achievement set, earned or not.
+
+    The frontend used to hardcode its own copy of this list, so an achievement
+    added server-side rendered as a generic medal with no description."""
+    return [{k: v for k, v in a.items() if k != "earned_blurb"} for a in ACHIEVEMENT_CATALOG]
+
+
 @api_router.get("/achievements")
 async def get_achievements(current_user=Depends(get_current_user)):
     return await db.achievements.find({"user_id": current_user["user_id"]}, {"_id": 0}).sort("earned_at", -1).to_list(100)
@@ -636,9 +678,15 @@ async def delete_account(data: DeleteAccountRequest, current_user=Depends(get_cu
 
 @api_router.post("/user/test-ai-key")
 async def test_ai_key(current_user=Depends(get_current_user)):
-    """Test if the user's Azure AI API key is working"""
+    """Ping the server's Azure deployment to confirm AI insights will work.
+
+    NOTE: despite the name, there is no per-user key — FORGE authenticates to
+    Azure with one server-side credential. The bring-your-own-key path was
+    removed from the settings UI; what remained was a settings write for fields
+    the model does not declare, which pydantic dropped, so the app reported
+    "API key saved securely!" while saving nothing."""
     azure_key = AZURE_API_KEY
-    
+
     if not azure_key or azure_key.strip() == "":
         raise HTTPException(status_code=400, detail="No API key configured on the server")
     

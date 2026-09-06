@@ -2,17 +2,14 @@ import { useState, useEffect } from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import api from "../utils/api";
 import ForgeHeader from "./ForgeHeader";
+import { useToday } from "../hooks/useToday";
+import { lastNDays } from "../utils/date";
 
-function HeatmapGrid({ data }) {
-  const cells = [];
-  const today = new Date();
-  for (let i = 89; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const key = d.toISOString().split("T")[0];
-    const rate = data[key] ?? -1;
-    cells.push({ date: key, rate });
-  }
+function HeatmapGrid({ data, todayStr }) {
+  // Keys must be the user's calendar days — the server builds this map in the
+  // user's timezone, so deriving them from toISOString() (UTC) shifted the whole
+  // grid by a day for anyone east or west of UTC and showed today as "No data".
+  const cells = lastNDays(todayStr, 90).map((key) => ({ date: key, rate: data[key] ?? -1 }));
 
   const getColor = (rate) => {
     if (rate < 0) return "bg-gray-100 dark:bg-gray-800";
@@ -67,6 +64,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export default function Analytics() {
+  const todayStr = useToday();
   const [stats, setStats] = useState(null);
   const [heatmap, setHeatmap] = useState({});
   const [patterns, setPatterns] = useState(null);
@@ -173,7 +171,7 @@ export default function Analytics() {
           <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">Consistency Heatmap</h3>
           <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4">Last 90 days of activity</p>
           <div data-testid="heatmap-grid">
-            <HeatmapGrid data={heatmap} />
+            <HeatmapGrid data={heatmap} todayStr={todayStr} />
           </div>
         </div>
 

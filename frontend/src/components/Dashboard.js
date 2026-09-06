@@ -4,6 +4,8 @@ import api from "../utils/api";
 import { toast } from "sonner";
 import HabitDetailModal from "./HabitDetailModal";
 import { FrequencyBadge, WeeklyProgressDots, isScheduledToday } from "./FrequencyPicker";
+import { useToday } from "../hooks/useToday";
+import { isoWeekMonday } from "../utils/date";
 
 const MOOD_OPTIONS = [
   { rating: 1, emoji: "😢", label: "Rough" },
@@ -63,11 +65,14 @@ export default function Dashboard() {
   const [weeklyCompletions, setWeeklyCompletions] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  // The user's calendar day — must match what the backend stamps completions with.
+  const todayStr = useToday();
+  const today = new Date(`${todayStr}T00:00:00`).toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric",
+  });
 
   const fetchData = useCallback(async () => {
     try {
-      const todayStr = new Date().toISOString().split("T")[0];
       const [habitsRes, completionsRes, statsRes, moodRes] = await Promise.all([
         api.get("/habits"),
         api.get(`/completions?date=${todayStr}`),
@@ -87,7 +92,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [todayStr]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -148,8 +153,8 @@ export default function Dashboard() {
   };
 
   // Split habits into scheduled and rest day
-  const scheduledHabits = useMemo(() => habits.filter(h => isScheduledToday(h)), [habits]);
-  const restDayHabits = useMemo(() => habits.filter(h => !isScheduledToday(h)), [habits]);
+  const scheduledHabits = useMemo(() => habits.filter(h => isScheduledToday(h, todayStr)), [habits, todayStr]);
+  const restDayHabits = useMemo(() => habits.filter(h => !isScheduledToday(h, todayStr)), [habits, todayStr]);
 
   // Seed weekly completion counts for times_per_week habits. Depends only on
   // `habits` — toggleHabit keeps the counts live optimistically, so we no longer
@@ -158,15 +163,11 @@ export default function Dashboard() {
     const fetchWeeklyComps = async () => {
       const weeklyHabits = habits.filter(h => h.frequency_type === "times_per_week");
       if (weeklyHabits.length === 0) return;
-      // Get start of current ISO week (Monday)
-      const now = new Date();
-      const dayOfWeek = now.getDay(); // 0=Sun
-      const diffToMon = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - diffToMon);
-      const mondayStr = monday.toISOString().split("T")[0];
+      const mondayStr = isoWeekMonday(todayStr);
       try {
-        const res = await api.get(`/completions`);
+        // Only this week's rows — this used to fetch the entire completion
+        // history (up to 10,000 documents) just to count the current week.
+        const res = await api.get(`/completions?since=${mondayStr}`);
         // Filter completions from monday onwards per habit
         const weekMap = {};
         (res.data || []).forEach(c => {
@@ -178,7 +179,7 @@ export default function Dashboard() {
       } catch { /* silent */ }
     };
     fetchWeeklyComps();
-  }, [habits]);
+  }, [habits, todayStr]);
 
   const completionPct = stats.max_today_points > 0
     ? Math.round(stats.today_points / stats.max_today_points * 100)

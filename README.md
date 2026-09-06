@@ -32,7 +32,7 @@ FORGE is a data-driven habit tracking application with AI-powered insights, adva
 - **Adaptive tone** - Choose from Supportive, Strategic, or Direct mode
 - **Contextual insights** - AI analyzes YOUR data, not generic advice
 - **Memory system** - Tracks past suggestions and their outcomes
-- **BYOK support** - Bring your own Azure AI API key or use built-in fallback templates
+- **Server-managed AI** - One Azure credential configured on the server, with built-in fallback templates when it is absent
 
 ### 🎮 Gamification
 - **Level system** with 10 tiers (0 → 9000+ points)
@@ -234,7 +234,6 @@ DB_NAME=forge_db
 
 # Security
 JWT_SECRET_KEY=<your-secret-key>
-ENCRYPTION_KEY=<your-encryption-key>
 
 # CORS
 CORS_ORIGINS=http://localhost:3000
@@ -250,10 +249,10 @@ SMTP_FROM=FORGE <noreply@yourdomain.com>
 VAPID_PRIVATE_KEY=<generate with web-push CLI>
 VAPID_PUBLIC_KEY=<generate with web-push CLI>
 
-# AI (Optional)
-EMERGENT_LLM_KEY=<your-llm-key>
+# AI (Optional) - one server-side credential, shared by all users
 AZURE_ENDPOINT=https://your-resource.openai.azure.com/openai/v1/
 AZURE_MODEL=gpt-5.2
+AZURE_API_KEY=<your-azure-key>
 
 # App
 APP_URL=http://localhost:3000
@@ -298,17 +297,18 @@ REACT_APP_BACKEND_URL=http://localhost:8001
 ## 🧪 Testing
 
 ```bash
-# Backend tests (TODO)
+# Backend unit tests (pure logic + JWT security)
 cd backend
+pip install -r requirements-dev.txt
 pytest
 
-# Frontend tests (TODO)
+# Frontend unit tests
 cd frontend
-yarn test
-
-# E2E tests (TODO)
-yarn test:e2e
+yarn test --watchAll=false
 ```
+
+Both suites run on every push and pull request — see `.github/workflows/ci.yml`.
+The frontend build runs there with `CI=true`, so lint warnings fail the build.
 
 ---
 

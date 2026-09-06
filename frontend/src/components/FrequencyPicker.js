@@ -1,3 +1,4 @@
+import { weekdayIso } from "../utils/date";
 // ── Frequency Picker ─────────────────────────────────────────────────────────
 // Shared component for habit creation/editing across Settings and Onboarding
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -119,14 +120,19 @@ export function WeeklyProgressDots({ habit, weekCompletions = 0 }) {
     );
 }
 
-export function isScheduledToday(habit) {
+/**
+ * Is this habit scheduled on the given day?
+ *
+ * `todayStr` is a YYYY-MM-DD in the USER's timezone (see hooks/useToday). It used
+ * to read `new Date().getDay()` — the *browser's* local weekday — which disagreed
+ * with the server for anyone travelling or with a timezone set that differs from
+ * their device, and could put a habit in the wrong section of the dashboard.
+ */
+export function isScheduledToday(habit, todayStr) {
     const ft = habit?.frequency_type || "daily";
     if (ft === "daily") return true;
     if (ft === "specific_days") {
-        const today = new Date().getDay(); // 0=Sun
-        // Convert JS day (0=Sun) to ISO (0=Mon)
-        const isoDay = today === 0 ? 6 : today - 1;
-        return (habit.frequency_days || []).includes(isoDay);
+        return (habit.frequency_days || []).includes(weekdayIso(todayStr));
     }
     if (ft === "times_per_week") return true;
     return true;

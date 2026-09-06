@@ -4,32 +4,28 @@ import api from "../utils/api";
 import { toast } from "sonner";
 import ForgeHeader from "./ForgeHeader";
 
-const ALL_ACHIEVEMENTS = [
-  { type: "first_checkin", name: "First Flame", description: "Complete your first habit", icon: "🔥" },
-  { type: "perfect_day", name: "First Perfect Day", description: "Complete all habits in one day", icon: "⭐" },
-  { type: "streak_7", name: "7-Day Streak", description: "7 consecutive days", icon: "💪" },
-  { type: "streak_30", name: "Forge Legend", description: "30 consecutive days", icon: "🏆" },
-  { type: "checkins_100", name: "Centurion", description: "100 habit check-ins", icon: "💯" },
-  { type: "morning_warrior", name: "Morning Warrior", description: "10 completions before 9AM", icon: "🌅" },
-  { type: "comeback", name: "Comeback King", description: "Restart after a 7-day break", icon: "👑" },
-];
-
-const LEVEL_THRESHOLDS = [0, 100, 250, 500, 900, 1500, 2500, 4000, 6000, 9000];
+// The achievement catalogue is served from GET /api/achievements/catalog. It used
+// to be duplicated here, so anything added on the server rendered as a generic
+// medal with no description. (An unused LEVEL_THRESHOLDS copy lived here too.)
+const MAX_LEVEL = 10;
 
 export default function Achievements() {
   const [earned, setEarned] = useState([]);
+  const [catalog, setCatalog] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [achRes, statsRes] = await Promise.all([
+        const [achRes, statsRes, catalogRes] = await Promise.all([
           api.get("/achievements"),
           api.get("/analytics/stats"),
+          api.get("/achievements/catalog"),
         ]);
         setEarned(achRes.data);
         setStats(statsRes.data);
+        setCatalog(catalogRes.data);
       } catch (e) {
         console.error(e);
       } finally {
@@ -51,11 +47,15 @@ export default function Achievements() {
   const level = stats?.level || 1;
   const totalPts = stats?.total_points || 0;
   const levelPct = stats?.level_progress_pct || 0;
-  const nextThreshold = stats?.next_level_threshold || 100;
+  // next_level_threshold is the ABSOLUTE point total for the next level. The card
+  // printed it as if it were the amount still needed, so at 175 points it claimed
+  // "250 pts to Level 3" when only 75 were left.
+  const pointsToNext = Math.max(0, (stats?.next_level_threshold || 100) - totalPts);
+  const atMaxLevel = level >= MAX_LEVEL;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
-      <ForgeHeader title="Achievements" subtitle={`${earned.length}/${ALL_ACHIEVEMENTS.length} unlocked`} />
+      <ForgeHeader title="Achievements" subtitle={`${earned.length}/${catalog.length} unlocked`} />
 
       <div className="px-6 pt-5 space-y-5">
         {/* Level card */}
@@ -74,13 +74,17 @@ export default function Achievements() {
           <div>
             <div className="flex justify-between text-xs opacity-80 font-manrope mb-1">
               <span>Level {level}</span>
-              <span>{nextThreshold.toLocaleString()} pts to Level {Math.min(level + 1, 10)}</span>
+              <span>
+                {atMaxLevel
+                  ? "Max level reached"
+                  : `${pointsToNext.toLocaleString()} pts to Level ${level + 1}`}
+              </span>
             </div>
             <div className="h-2.5 bg-white/20 rounded-full overflow-hidden">
               <div
                 data-testid="level-progress-bar"
                 className="h-full bg-white rounded-full transition-all duration-700"
-                style={{ width: `${levelPct}%` }}
+                style={{ width: `${atMaxLevel ? 100 : levelPct}%` }}
               />
             </div>
           </div>
@@ -107,7 +111,7 @@ export default function Achievements() {
             <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest font-chivo mb-3">Earned</p>
             <div className="grid grid-cols-2 gap-3">
               {earned.map((ach) => {
-                const def = ALL_ACHIEVEMENTS.find((a) => a.type === ach.type);
+                const def = catalog.find((a) => a.type === ach.type);
                 return (
                   <div
                     key={ach.achievement_id}
@@ -131,7 +135,7 @@ export default function Achievements() {
         <div>
           <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest font-chivo mb-3">Locked</p>
           <div className="grid grid-cols-2 gap-3">
-            {ALL_ACHIEVEMENTS.filter((a) => !earnedTypes.has(a.type)).map((ach) => (
+            {catalog.filter((a) => !earnedTypes.has(a.type)).map((ach) => (
               <div
                 key={ach.type}
                 data-testid={`locked-achievement-${ach.type}`}
