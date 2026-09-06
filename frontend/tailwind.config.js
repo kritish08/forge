@@ -16,30 +16,51 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      // Semantic roles only — see src/tokens.css. Components should never name a
+      // palette step (orange-50, gray-500) directly: that is what left ~40 colour
+      // classes without a dark variant.
       colors: {
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        card: { DEFAULT: "hsl(var(--card))", foreground: "hsl(var(--card-foreground))" },
-        popover: { DEFAULT: "hsl(var(--popover))", foreground: "hsl(var(--popover-foreground))" },
-        primary: { DEFAULT: "hsl(var(--primary))", foreground: "hsl(var(--primary-foreground))" },
-        secondary: { DEFAULT: "hsl(var(--secondary))", foreground: "hsl(var(--secondary-foreground))" },
-        muted: { DEFAULT: "hsl(var(--muted))", foreground: "hsl(var(--muted-foreground))" },
-        accent: { DEFAULT: "hsl(var(--accent))", foreground: "hsl(var(--accent-foreground))" },
-        destructive: { DEFAULT: "hsl(var(--destructive))", foreground: "hsl(var(--destructive-foreground))" },
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        chart: {
-          "1": "hsl(var(--chart-1))", "2": "hsl(var(--chart-2))",
-          "3": "hsl(var(--chart-3))", "4": "hsl(var(--chart-4))", "5": "hsl(var(--chart-5))",
+        surface: {
+          DEFAULT: "rgb(var(--surface) / <alpha-value>)",
+          raised: "rgb(var(--surface-raised) / <alpha-value>)",
+          sunk: "rgb(var(--surface-sunk) / <alpha-value>)",
         },
-        forge: {
-          orange: "#F97316",
-          red: "#EA580C",
-          ember: "#FB923C",
-          ash: "#F4F4F5",
-          steel: "#52525B",
+        line: {
+          DEFAULT: "rgb(var(--border) / <alpha-value>)",
+          strong: "rgb(var(--border-strong) / <alpha-value>)",
         },
+        ink: {
+          DEFAULT: "rgb(var(--text) / <alpha-value>)",
+          muted: "rgb(var(--text-muted) / <alpha-value>)",
+          subtle: "rgb(var(--text-subtle) / <alpha-value>)",
+        },
+        accent: {
+          DEFAULT: "rgb(var(--accent) / <alpha-value>)",
+          bold: "rgb(var(--accent-bold) / <alpha-value>)",
+          soft: "rgb(var(--accent-soft) / <alpha-value>)",
+          contrast: "rgb(var(--accent-contrast) / <alpha-value>)",
+        },
+        success: {
+          DEFAULT: "rgb(var(--success) / <alpha-value>)",
+          soft: "rgb(var(--success-soft) / <alpha-value>)",
+        },
+        warning: {
+          DEFAULT: "rgb(var(--warning) / <alpha-value>)",
+          soft: "rgb(var(--warning-soft) / <alpha-value>)",
+        },
+        danger: {
+          DEFAULT: "rgb(var(--danger) / <alpha-value>)",
+          soft: "rgb(var(--danger-soft) / <alpha-value>)",
+        },
+      },
+      boxShadow: {
+        sheet: "var(--shadow-sheet)",
+        row: "var(--shadow-row)",
+      },
+      spacing: {
+        // Device insets, so a screen can pad itself without hardcoding pt-12.
+        "safe-t": "env(safe-area-inset-top, 0px)",
+        "safe-b": "env(safe-area-inset-bottom, 0px)",
       },
       keyframes: {
         "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },

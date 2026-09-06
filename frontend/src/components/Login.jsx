@@ -55,20 +55,20 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 flex flex-col">
+    <div className="min-h-screen bg-surface-raised flex flex-col">
       {/* Hero section */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 pt-16 pb-8">
         {/* Logo */}
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-2 mb-4 cursor-pointer" onClick={() => navigate("/")}>
-            <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center shadow-lg shadow-orange-200">
+            <div className="w-10 h-10 bg-accent rounded-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z" />
               </svg>
             </div>
-            <h1 className="text-3xl font-black text-gray-900 dark:text-white font-chivo tracking-tight">FORGE</h1>
+            <h1 className="text-3xl font-black text-ink font-chivo tracking-tight">FORGE</h1>
           </div>
-          <p className="text-orange-600 text-sm font-manrope font-medium tracking-widest uppercase">
+          <p className="text-accent-bold text-sm font-manrope font-medium">
             Consistency forged in fire
           </p>
         </div>
@@ -81,9 +81,9 @@ export default function Login() {
               { icon: "📊", text: "Insights no generic app can give you" },
               { icon: "🔥", text: "Adaptive coaching as you grow" },
             ].map((item, i) => (
-              <div key={i} className="flex items-center gap-3 bg-orange-50 rounded-xl p-4 border border-orange-100">
+              <div key={i} className="flex items-center gap-3 bg-accent-soft rounded-xl p-4 border border-accent/25">
                 <span className="text-xl">{item.icon}</span>
-                <p className="text-sm text-gray-700 dark:text-gray-300 font-manrope font-medium">{item.text}</p>
+                <p className="text-sm text-ink font-manrope font-medium">{item.text}</p>
               </div>
             ))}
           </div>
@@ -94,7 +94,7 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {isRegistering && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name</label>
+                <label className="block text-sm font-medium text-ink mb-1.5">Name</label>
                 <Input
                   type="text"
                   required
@@ -107,7 +107,7 @@ export default function Login() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Email</label>
+              <label className="block text-sm font-medium text-ink mb-1.5">Email</label>
               <Input
                 type="email"
                 required
@@ -120,7 +120,7 @@ export default function Login() {
 
             {!isForgotPassword && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Password</label>
+                <label className="block text-sm font-medium text-ink mb-1.5">Password</label>
                 <Input
                   type="password"
                   required
@@ -136,7 +136,7 @@ export default function Login() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-gray-900 hover:bg-gray-800 text-white font-chivo font-bold text-sm tracking-wide uppercase py-6 rounded-xl transition-all active:scale-95 shadow-lg"
+              className="w-full bg-ink text-white font-chivo font-bold text-sm py-6 rounded-xl transition-all active:scale-95 shadow-lg"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -150,7 +150,7 @@ export default function Login() {
             {!isForgotPassword && !isRegistering && (
               <button
                 onClick={() => setIsForgotPassword(true)}
-                className="w-full text-sm text-gray-600 dark:text-gray-500 hover:text-orange-600 font-medium transition-colors"
+                className="w-full text-sm text-ink-muted hover:text-accent-bold font-medium transition-colors"
               >
                 Forgot password?
               </button>
@@ -162,14 +162,14 @@ export default function Login() {
                   setIsForgotPassword(false);
                   setFormData({ email: "", password: "", name: "" });
                 }}
-                className="w-full text-sm text-gray-600 dark:text-gray-500 hover:text-orange-600 font-medium transition-colors"
+                className="w-full text-sm text-ink-muted hover:text-accent-bold font-medium transition-colors"
               >
                 ← Back to login
               </button>
             ) : (
               <button
                 onClick={() => setIsRegistering(!isRegistering)}
-                className="w-full text-sm text-gray-600 dark:text-gray-500 hover:text-orange-600 font-medium transition-colors"
+                className="w-full text-sm text-ink-muted hover:text-accent-bold font-medium transition-colors"
               >
                 {isRegistering ? "Already have an account? Sign in" : "New to FORGE? Create account"}
               </button>
@@ -180,7 +180,7 @@ export default function Login() {
         {/* Quote */}
         {!isRegistering && (
           <blockquote className="w-full max-w-sm text-center mt-10 px-4">
-            <p className="text-gray-500 dark:text-gray-500 text-sm italic font-manrope leading-relaxed">
+            <p className="text-ink-muted text-sm italic font-manrope leading-relaxed">
               "Most trackers give you generic motivation. Forge studies you — and tells you exactly
               what your data proves about your patterns."
             </p>
@@ -190,7 +190,7 @@ export default function Login() {
 
       {/* Bottom tagline */}
       <div className="text-center pb-8 px-6">
-        <p className="text-xs text-gray-300 font-manrope">
+        <p className="text-xs text-ink-subtle font-manrope">
           Built on research: habits take 66 days avg, not 21
         </p>
       </div>

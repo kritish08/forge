@@ -23,12 +23,10 @@ const Settings = lazy(() => import("./components/Settings"));
 
 function FullScreenLoader({ label }) {
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 flex items-center justify-center transition-colors">
+    <div className="flex min-h-screen items-center justify-center bg-surface">
       <div className="text-center">
-        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        {label && (
-          <p className="text-sm text-gray-400 dark:text-gray-500 font-manrope tracking-widest uppercase">{label}</p>
-        )}
+        <div className="mx-auto mb-3 h-9 w-9 animate-spin rounded-full border-[3px] border-line border-t-accent" />
+        {label && <p className="text-sm text-ink-muted">{label}</p>}
       </div>
     </div>
   );

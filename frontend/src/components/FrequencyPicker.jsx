@@ -16,10 +16,10 @@ export function FrequencyPicker({ frequencyType, frequencyDays, frequencyTarget,
 
     return (
         <div className="space-y-3">
-            <span className="text-xs text-gray-500 dark:text-gray-500 font-manrope">Frequency:</span>
+            <span className="text-xs text-ink-muted font-manrope">Frequency:</span>
 
             {/* Segmented control */}
-            <div className="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 gap-1">
+            <div className="flex bg-surface-sunk rounded-xl p-1 gap-1">
                 {[
                     { id: "daily", label: "Every Day" },
                     { id: "specific_days", label: "Specific Days" },
@@ -29,10 +29,8 @@ export function FrequencyPicker({ frequencyType, frequencyDays, frequencyTarget,
                         key={opt.id}
                         type="button"
                         onClick={() => setType(opt.id)}
-                        className={`flex-1 py-2 rounded-lg text-xs font-bold font-chivo transition-all ${
-                            frequencyType === opt.id
-                                ? "bg-orange-500 text-white shadow-sm"
-                                : "text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold font-chivo transition-all ${ frequencyType === opt.id ?"bg-accent text-white shadow-sm"
+                                : "text-ink-muted  dark:hover:bg-line-strong"
                         }`}
                     >
                         {opt.label}
@@ -48,10 +46,8 @@ export function FrequencyPicker({ frequencyType, frequencyDays, frequencyTarget,
                             key={i}
                             type="button"
                             onClick={() => toggleDay(i)}
-                            className={`w-9 h-9 rounded-full text-xs font-bold font-chivo transition-all flex items-center justify-center ${
-                                frequencyDays.includes(i)
-                                    ? "bg-orange-500 text-white shadow-md shadow-orange-200"
-                                    : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-500 hover:bg-gray-200"
+                            className={`w-9 h-9 rounded-full text-xs font-bold font-chivo transition-all flex items-center justify-center ${ frequencyDays.includes(i) ?"bg-accent text-white shadow-md shadow-none"
+                                    : "bg-surface-sunk text-ink-muted "
                             }`}
                         >
                             {label}
@@ -67,19 +63,19 @@ export function FrequencyPicker({ frequencyType, frequencyDays, frequencyTarget,
                         type="button"
                         onClick={() => setTarget(frequencyTarget - 1)}
                         disabled={frequencyTarget <= 1}
-                        className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-500 font-bold text-lg flex items-center justify-center disabled:opacity-30 hover:bg-gray-200 transition-all"
+                        className="w-9 h-9 rounded-full bg-surface-sunk text-ink-muted font-bold text-lg flex items-center justify-center disabled:opacity-30 transition-all"
                     >
                         −
                     </button>
                     <div className="flex items-baseline gap-1">
-                        <span className="text-2xl font-black text-gray-900 dark:text-white font-chivo">{frequencyTarget}</span>
-                        <span className="text-sm text-gray-400 dark:text-gray-500 font-manrope">times/week</span>
+                        <span className="text-2xl font-black text-ink font-chivo">{frequencyTarget}</span>
+                        <span className="text-sm text-ink-subtle font-manrope">times/week</span>
                     </div>
                     <button
                         type="button"
                         onClick={() => setTarget(frequencyTarget + 1)}
                         disabled={frequencyTarget >= 7}
-                        className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-500 font-bold text-lg flex items-center justify-center disabled:opacity-30 hover:bg-gray-200 transition-all"
+                        className="w-9 h-9 rounded-full bg-surface-sunk text-ink-muted font-bold text-lg flex items-center justify-center disabled:opacity-30 transition-all"
                     >
                         +
                     </button>
@@ -91,13 +87,13 @@ export function FrequencyPicker({ frequencyType, frequencyDays, frequencyTarget,
 
 export function FrequencyBadge({ habit }) {
     const ft = habit?.frequency_type || "daily";
-    if (ft === "daily") return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 font-chivo">Daily</span>;
+    if (ft === "daily") return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface-sunk text-ink-muted font-chivo">Daily</span>;
     if (ft === "specific_days") {
         const days = (habit.frequency_days || []).map(d => DAY_NAMES[d]).join(" · ");
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-50 dark:bg-orange-950/30 text-orange-600 dark:text-orange-400 border border-orange-100 dark:border-orange-900/50 font-chivo">{days || "No days"}</span>;
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent-soft text-accent-bold border border-accent/25 font-chivo">{days || "No days"}</span>;
     }
     if (ft === "times_per_week") {
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50 font-chivo">{habit.frequency_target || 1}x/week</span>;
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface-sunk text-ink border border-line font-chivo">{habit.frequency_target || 1}x/week</span>;
     }
     return null;
 }
@@ -110,12 +106,11 @@ export function WeeklyProgressDots({ habit, weekCompletions = 0 }) {
             {Array.from({ length: target }, (_, i) => (
                 <div
                     key={i}
-                    className={`w-2 h-2 rounded-full transition-all ${
-                        i < filled ? "bg-orange-500" : "bg-gray-200 dark:bg-gray-700"
+                    className={`w-2 h-2 rounded-full transition-all ${ i < filled ?"bg-accent" : "bg-line-strong "
                     }`}
                 />
             ))}
-            <span className="text-[10px] text-gray-400 dark:text-gray-500 font-manrope ml-1">{filled}/{target}</span>
+            <span className="text-[10px] text-ink-subtle font-manrope ml-1">{filled}/{target}</span>
         </div>
     );
 }

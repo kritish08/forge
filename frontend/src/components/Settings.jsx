@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
+import { invalidate } from "../hooks/useCachedQuery";
 import { toast } from "sonner";
-import ForgeHeader from "./ForgeHeader";
+import Screen from "./Screen";
+import { ConfirmSheet } from "./Sheet";
+import { Bell, Mail, Globe, Pencil, Trash } from "./icons";
 import { FrequencyPicker, FrequencyBadge } from "./FrequencyPicker";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -54,6 +57,7 @@ export default function Settings() {
     try {
       const res = await api.post("/habits", newHabit);
       setHabits([...habits, res.data]);
+      invalidate("habits", "stats");
       setNewHabit({ name: "", priority: 1, context: "", frequency_type: "daily", frequency_days: [], frequency_target: 7 });
       toast.success("Habit added!");
     } catch {
@@ -65,6 +69,7 @@ export default function Settings() {
     try {
       await api.put(`/habits/${habitId}`, data);
       setHabits(habits.map((h) => h.habit_id === habitId ? { ...h, ...data } : h));
+      invalidate("habits", "stats");
       setEditingHabit(null);
       toast.success("Habit updated!");
     } catch {
@@ -72,14 +77,22 @@ export default function Settings() {
     }
   };
 
-  const deleteHabit = async (habitId) => {
-    if (!window.confirm("Delete this habit? All completion history will remain.")) return;
+  // window.confirm was system chrome that broke the app illusion on mobile, and
+  // an installed PWA can suppress it outright.
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const deleteHabit = async () => {
+    const habit = confirmDelete;
+    if (!habit) return;
     try {
-      await api.delete(`/habits/${habitId}`);
-      setHabits(habits.filter((h) => h.habit_id !== habitId));
-      toast.success("Habit removed.");
+      await api.delete(`/habits/${habit.habit_id}`);
+      setHabits((hs) => hs.filter((h) => h.habit_id !== habit.habit_id));
+      invalidate("habits", "stats");
+      toast.success(`${habit.name} removed`);
     } catch {
-      toast.error("Failed to delete habit.");
+      toast.error("Couldn't remove that habit. Try again.");
+    } finally {
+      setConfirmDelete(null);
     }
   };
 
@@ -213,13 +226,14 @@ export default function Settings() {
     }
   };
 
+  const [confirmWipe, setConfirmWipe] = useState(false);
+
   const deleteAccount = async () => {
+    setConfirmWipe(false);
     if (!deletePassword) {
-      toast.error("Please enter your password to confirm.");
+      toast.error("Enter your password to confirm.");
       return;
     }
-    if (!window.confirm("WARNING: This will permanently delete your account and ALL your data. This action CANNOT be undone. Are you absolutely sure?")) return;
-    
     setDeleting(true);
     try {
       await api.delete("/user/account", { data: { password: deletePassword } });
@@ -246,39 +260,34 @@ export default function Settings() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-24">
-      {/* Header */}
-      <ForgeHeader title="Settings" />
-
-      {/* Profile */}
-      <div className="px-6 pt-5">
-        <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 mb-5">
+    <Screen title="Settings">
+      <div>
+        <div className="bg-surface-raised rounded-2xl border border-line p-5 mb-5">
           <div className="flex items-center gap-4">
-            {user?.picture && <img src={user.picture} alt="avatar" className="w-14 h-14 rounded-full border-2 border-orange-200" />}
+            {user?.picture && <img src={user.picture} alt="avatar" className="w-14 h-14 rounded-full border-2 border-accent/25" />}
             <div>
-              <p className="font-bold font-chivo text-gray-900 dark:text-white text-lg">{user?.name}</p>
-              <p className="text-sm text-gray-400 dark:text-gray-500 font-manrope">{user?.email}</p>
+              <p className="font-bold font-chivo text-ink text-lg">{user?.name}</p>
+              <p className="text-sm text-ink-subtle font-manrope">{user?.email}</p>
             </div>
           </div>
           <button
             data-testid="logout-btn"
             onClick={logout}
-            className="mt-4 w-full py-3 border border-red-200 text-red-500 font-chivo font-bold text-sm uppercase tracking-wide rounded-xl hover:bg-red-50 active:scale-95 transition-all"
+            className="mt-4 w-full py-3 border border-danger/25 text-danger font-chivo font-bold text-sm rounded-xl hover:bg-danger-soft active:scale-95 transition-all"
           >
             Sign Out
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex bg-gray-100 dark:bg-gray-800 rounded-2xl p-1 mb-5 flex-wrap gap-1">
+        <div className="flex bg-surface-sunk rounded-2xl p-1 mb-5 flex-wrap gap-1">
           {[{ id: "habits", label: "Habits" }, { id: "notifications", label: "Notifications" }, { id: "ai", label: "AI Key" }, { id: "mode", label: "Mode" }, { id: "danger", label: "Danger" }].map((tab) => (
             <button
               key={tab.id}
               data-testid={`settings-tab-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 min-w-[70px] py-2.5 rounded-xl text-xs sm:text-sm font-bold font-chivo transition-all ${activeTab === tab.id 
-                ? (tab.id === "danger" ? "bg-red-500 text-white shadow-sm" : "bg-white dark:bg-gray-950 text-gray-900 dark:text-white shadow-sm") 
-                : "text-gray-500 dark:text-gray-500 hover:bg-gray-200"
+              className={`flex-1 min-w-[70px] py-2.5 rounded-xl text-xs sm:text-sm font-bold font-chivo transition-all ${activeTab === tab.id ? (tab.id ==="danger" ? "bg-danger text-white shadow-sm" : "bg-surface-raised text-ink shadow-sm") 
+                : "text-ink-muted "
                 }`}
             >
               {tab.label}
@@ -290,14 +299,14 @@ export default function Settings() {
         {activeTab === "habits" && (
           <div className="space-y-4">
             {/* Existing habits */}
-            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-                <h3 className="font-bold font-chivo text-gray-900 dark:text-white">Your Habits</h3>
+            <div className="bg-surface-raised rounded-2xl border border-line overflow-hidden">
+              <div className="px-5 py-4 border-b border-line">
+                <h3 className="font-bold font-chivo text-ink">Your Habits</h3>
               </div>
               {habits.length === 0 ? (
-                <div className="p-5 text-center text-gray-400 dark:text-gray-500 text-sm font-manrope">No habits yet</div>
+                <div className="p-5 text-center text-ink-subtle text-sm font-manrope">No habits yet</div>
               ) : (
-                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                <div className="divide-y divide-line">
                   {habits.map((h) => (
                     <div key={h.habit_id} className="px-5 py-4">
                       {editingHabit?.habit_id === h.habit_id ? (
@@ -306,19 +315,19 @@ export default function Settings() {
                             data-testid={`habit-edit-name-${h.habit_id}`}
                             value={editingHabit.name}
                             onChange={(e) => setEditingHabit({ ...editingHabit, name: e.target.value })}
-                            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-orange-300"
+                            className="w-full bg-surface-sunk border border-line rounded-xl px-3 py-2 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-accent"
                           />
                           <input
                             value={editingHabit.context || ""}
                             onChange={(e) => setEditingHabit({ ...editingHabit, context: e.target.value })}
                             placeholder="What is this for?"
-                            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-orange-300"
+                            className="w-full bg-surface-sunk border border-line rounded-xl px-3 py-2 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-accent"
                           />
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500 dark:text-gray-500 font-manrope">Priority:</span>
+                            <span className="text-xs text-ink-muted font-manrope">Priority:</span>
                             {[1, 2, 3].map((p) => (
                               <button key={p} onClick={() => setEditingHabit({ ...editingHabit, priority: p })}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${editingHabit.priority === p ? "bg-orange-500 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-500"}`}>
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${editingHabit.priority === p ?"bg-accent text-white" : "bg-surface-sunk text-ink-muted"}`}>
                                 {"⭐".repeat(p)}
                               </button>
                             ))}
@@ -331,7 +340,7 @@ export default function Settings() {
                           />
                           <div className="flex gap-2">
                             <button onClick={() => setEditingHabit(null)}
-                              className="flex-1 py-2 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-500 text-xs font-bold font-chivo rounded-xl">
+                              className="flex-1 py-2 border border-line text-ink-muted text-xs font-bold font-chivo rounded-xl">
                               Cancel
                             </button>
                             <button
@@ -341,7 +350,7 @@ export default function Settings() {
                                 frequency_type: editingHabit.frequency_type, frequency_days: editingHabit.frequency_days,
                                 frequency_target: editingHabit.frequency_target
                               })}
-                              className="flex-1 py-2 bg-orange-500 text-white text-xs font-bold font-chivo rounded-xl">
+                              className="flex-1 py-2 bg-accent text-white text-xs font-bold font-chivo rounded-xl">
                               Save
                             </button>
                           </div>
@@ -350,29 +359,25 @@ export default function Settings() {
                         <div className="flex items-center gap-3">
                           <div className="flex gap-0.5">
                             {[1, 2, 3].map((s) => (
-                              <span key={s} className={`text-sm ${s <= h.priority ? "text-orange-500" : "text-gray-200"}`}>★</span>
+                              <span key={s} className={`text-sm ${s <= h.priority ?"text-accent" : "text-ink-subtle"}`}>★</span>
                             ))}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 font-manrope">{h.name}</p>
+                            <p className="text-sm font-semibold text-ink font-manrope">{h.name}</p>
                             <div className="flex items-center gap-2 mt-0.5">
-                              {h.context && <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope">For: {h.context}</p>}
+                              {h.context && <p className="text-xs text-ink-subtle font-manrope">For: {h.context}</p>}
                               <FrequencyBadge habit={h} />
                             </div>
                           </div>
                           <button onClick={() => setEditingHabit({ ...h })}
-                            className="text-gray-400 dark:text-gray-500 hover:text-orange-500 transition-colors p-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
+                            className="text-ink-subtle hover:text-accent transition-colors p-1">
+                            <Pencil className="h-4 w-4" />
                           </button>
                           <button
                             data-testid={`habit-delete-${h.habit_id}`}
-                            onClick={() => deleteHabit(h.habit_id)}
-                            className="text-gray-400 dark:text-gray-500 hover:text-red-400 transition-colors p-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
+                            onClick={() => setConfirmDelete(h)}
+                            className="text-ink-subtle hover:text-danger transition-colors p-1">
+                            <Trash className="h-4 w-4" />
                           </button>
                         </div>
                       )}
@@ -383,27 +388,27 @@ export default function Settings() {
             </div>
 
             {/* Add habit form */}
-            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
-              <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-4">Add New Habit</h3>
+            <div className="bg-surface-raised rounded-2xl border border-line p-5">
+              <h3 className="font-bold font-chivo text-ink mb-4">Add New Habit</h3>
               <input
                 data-testid="settings-habit-name"
                 value={newHabit.name}
                 onChange={(e) => setNewHabit({ ...newHabit, name: e.target.value })}
                 onKeyDown={(e) => e.key === "Enter" && addHabit()}
                 placeholder="Habit name"
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                className="w-full bg-surface-sunk border border-line rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-accent"
               />
               <input
                 value={newHabit.context}
                 onChange={(e) => setNewHabit({ ...newHabit, context: e.target.value })}
                 placeholder="What is this for? (optional)"
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                className="w-full bg-surface-sunk border border-line rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-accent"
               />
               <div className="flex items-center gap-3 mb-3">
-                <span className="text-xs text-gray-500 dark:text-gray-500 font-manrope">Priority:</span>
+                <span className="text-xs text-ink-muted font-manrope">Priority:</span>
                 {[1, 2, 3].map((p) => (
                   <button key={p} onClick={() => setNewHabit({ ...newHabit, priority: p })}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${newHabit.priority === p ? "bg-orange-500 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-500"}`}>
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${newHabit.priority === p ?"bg-accent text-white" : "bg-surface-sunk text-ink-muted"}`}>
                     {"⭐".repeat(p)}
                   </button>
                 ))}
@@ -419,7 +424,7 @@ export default function Settings() {
                 data-testid="settings-add-habit-btn"
                 onClick={addHabit}
                 disabled={!newHabit.name.trim()}
-                className="w-full py-3 bg-orange-500 text-white font-chivo font-bold text-sm uppercase tracking-wide rounded-xl disabled:opacity-40 active:scale-95 transition-all"
+                className="w-full py-3 bg-accent text-white font-chivo font-bold text-sm rounded-xl disabled:opacity-40 active:scale-95 transition-all"
               >
                 + Add Habit
               </button>
@@ -431,45 +436,45 @@ export default function Settings() {
         {activeTab === "notifications" && (
           <div className="space-y-4">
             {/* Push Notifications */}
-            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
-              <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">🔔 Push Notifications</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4 leading-relaxed">
+            <div className="bg-surface-raised rounded-2xl border border-line p-5">
+              <h3 className="mb-1 flex items-center gap-2 font-chivo font-bold text-ink"><Bell className="h-[18px] w-[18px] text-ink-muted" />Push Notifications</h3>
+              <p className="text-xs text-ink-subtle font-manrope mb-4 leading-relaxed">
                 Get instant alerts when it's time to check in on your habits
               </p>
 
               {/* Server VAPID config warning */}
               {vapidConfigured === false && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
-                  <p className="text-xs text-red-700 font-manrope font-medium">
+                <div className="bg-danger-soft border border-danger/25 rounded-xl p-3 mb-4">
+                  <p className="text-xs text-danger font-manrope font-medium">
                     ⚠️ <strong>Server not configured:</strong> VAPID keys are missing from the server environment. Push notifications cannot work until <code>VAPID_PRIVATE_KEY</code> and <code>VAPID_PUBLIC_KEY</code> are added to <code>backend/.env</code>.
                   </p>
                 </div>
               )}
 
               {!pushSupported ? (
-                <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3">
-                  <p className="text-sm text-gray-600 dark:text-gray-500 font-manrope">
+                <div className="bg-surface-sunk border border-line rounded-xl p-3">
+                  <p className="text-sm text-ink-muted font-manrope">
                     Push notifications are not supported in your browser
                   </p>
                 </div>
               ) : pushSubscribed ? (
                 <div>
-                  <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-xl p-3 mb-3">
-                    <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex items-center gap-2 bg-success-soft border border-success/25 rounded-xl p-3 mb-3">
+                    <svg className="w-4 h-4 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    <span className="text-sm text-green-700 font-manrope font-medium">Push notifications enabled</span>
+                    <span className="text-sm text-success font-manrope font-medium">Push notifications enabled</span>
                   </div>
                   <div className="flex gap-2">
                     <button
                       onClick={testPush}
-                      className="flex-1 py-3 bg-orange-500 text-white font-chivo font-bold text-sm uppercase tracking-wide rounded-xl hover:bg-orange-600 active:scale-95 transition-all"
+                      className="flex-1 py-3 bg-accent text-white font-chivo font-bold text-sm rounded-xl hover:bg-accent-bold active:scale-95 transition-all"
                     >
                       Send Test
                     </button>
                     <button
                       onClick={unsubscribePush}
-                      className="flex-1 py-3 border border-red-200 text-red-500 font-chivo font-bold text-sm uppercase tracking-wide rounded-xl hover:bg-red-50 active:scale-95 transition-all"
+                      className="flex-1 py-3 border border-danger/25 text-danger font-chivo font-bold text-sm rounded-xl hover:bg-danger-soft active:scale-95 transition-all"
                     >
                       Disable
                     </button>
@@ -478,7 +483,7 @@ export default function Settings() {
               ) : (
                 <button
                   onClick={subscribePush}
-                  className="w-full py-3 bg-orange-500 text-white font-chivo font-bold text-sm uppercase tracking-wide rounded-xl hover:bg-orange-600 active:scale-95 transition-all"
+                  className="w-full py-3 bg-accent text-white font-chivo font-bold text-sm rounded-xl hover:bg-accent-bold active:scale-95 transition-all"
                 >
                   Enable Push Notifications
                 </button>
@@ -487,53 +492,49 @@ export default function Settings() {
             </div>
 
             {/* Email Notifications */}
-            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
-              <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">📧 Email Notifications</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4 leading-relaxed">
+            <div className="bg-surface-raised rounded-2xl border border-line p-5">
+              <h3 className="mb-1 flex items-center gap-2 font-chivo font-bold text-ink"><Mail className="h-[18px] w-[18px] text-ink-muted" />Email Notifications</h3>
+              <p className="text-xs text-ink-subtle font-manrope mb-4 leading-relaxed">
                 Receive habit reminders and weekly summaries via email
               </p>
 
               <div className="space-y-3">
                 {/* Daily Reminder */}
-                <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 rounded-xl p-3">
+                <div className="flex items-center justify-between bg-surface-sunk rounded-xl p-3">
                   <div>
-                    <p className="text-sm font-bold text-gray-900 dark:text-white font-manrope">Daily Reminder</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-500 font-manrope">8:00 PM every day</p>
+                    <p className="text-sm font-bold text-ink font-manrope">Daily Reminder</p>
+                    <p className="text-xs text-ink-muted font-manrope">8:00 PM every day</p>
                   </div>
                   <button
                     onClick={() => toggleEmailNotifications('email_daily_reminder')}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user?.email_daily_reminder ? 'bg-orange-500' : 'bg-gray-300 dark:bg-gray-600'
-                      }`}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user?.email_daily_reminder ? 'bg-accent' : 'bg-line-strong dark:bg-line-strong' }`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${user?.email_daily_reminder ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                      className={`inline-block h-4 w-4 transform rounded-full bg-surface-raised transition-transform ${user?.email_daily_reminder ? 'translate-x-6' : 'translate-x-1' }`}
                     />
                   </button>
                 </div>
 
                 {/* Weekly Summary */}
-                <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 rounded-xl p-3">
+                <div className="flex items-center justify-between bg-surface-sunk rounded-xl p-3">
                   <div>
-                    <p className="text-sm font-bold text-gray-900 dark:text-white font-manrope">Weekly Summary</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-500 font-manrope">Every Sunday at 9:00 AM</p>
+                    <p className="text-sm font-bold text-ink font-manrope">Weekly Summary</p>
+                    <p className="text-xs text-ink-muted font-manrope">Every Sunday at 9:00 AM</p>
                   </div>
                   <button
                     onClick={() => toggleEmailNotifications('email_weekly_summary')}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user?.email_weekly_summary ? 'bg-orange-500' : 'bg-gray-300 dark:bg-gray-600'
-                      }`}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user?.email_weekly_summary ? 'bg-accent' : 'bg-line-strong dark:bg-line-strong' }`}
                   >
                     <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${user?.email_weekly_summary ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                      className={`inline-block h-4 w-4 transform rounded-full bg-surface-raised transition-transform ${user?.email_weekly_summary ? 'translate-x-6' : 'translate-x-1' }`}
                     />
                   </button>
                 </div>
               </div>
 
               {smtpConfigured === false && (
-                <div className="mt-4 bg-yellow-50 border border-yellow-100 rounded-xl p-3">
-                  <p className="text-xs text-yellow-700 font-manrope">
+                <div className="mt-4 bg-warning-soft border border-warning/25 rounded-xl p-3">
+                  <p className="text-xs text-warning font-manrope">
                     ⚠️ SMTP not configured. Email notifications won't be sent until SMTP settings are added to backend/.env
                   </p>
                 </div>
@@ -541,19 +542,19 @@ export default function Settings() {
             </div>
 
             {/* Timezone & Scheduling */}
-            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
-              <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">🌍 Timezone & Timing</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4 leading-relaxed">
+            <div className="bg-surface-raised rounded-2xl border border-line p-5">
+              <h3 className="mb-1 flex items-center gap-2 font-chivo font-bold text-ink"><Globe className="h-[18px] w-[18px] text-ink-muted" />Timezone & Timing</h3>
+              <p className="text-xs text-ink-subtle font-manrope mb-4 leading-relaxed">
                 Set your timezone and when you'd like to receive your daily notifications.
               </p>
               
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-bold text-gray-900 dark:text-white font-manrope block mb-2">Timezone</label>
+                  <label className="text-sm font-bold text-ink font-manrope block mb-2">Timezone</label>
                   <select 
                     value={user?.timezone || "UTC"}
                     onChange={(e) => saveSettings({ timezone: e.target.value }, "Timezone updated!")}
-                    className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full bg-surface-sunk border border-line rounded-xl px-4 py-3 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-accent/40"
                   >
                     {Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone').map(tz => (
                       <option key={tz} value={tz}>{tz}</option>
@@ -563,12 +564,12 @@ export default function Settings() {
                 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-bold text-gray-900 dark:text-white font-manrope block">Notification Schedules</label>
+                    <label className="text-sm font-bold text-ink font-manrope block">Notification Schedules</label>
                     <button
                       onClick={() => updateRules(
                         [...rules, { days: [0, 1, 2, 3, 4, 5, 6], time: "08:00" }],
                         { immediate: true, message: "Added schedule" })}
-                      className="text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950/30 p-1.5 rounded-lg transition-colors flex items-center gap-1 text-sm font-bold font-manrope"
+                      className="text-accent hover:bg-accent-soft p-1.5 rounded-lg transition-colors flex items-center gap-1 text-sm font-bold font-manrope"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4"/></svg> Add
                     </button>
@@ -579,21 +580,21 @@ export default function Settings() {
                     const setRule = (patch, opts) => updateRules(
                       rules.map((r, i) => (i === idx ? { ...r, ...patch } : r)), opts);
                     return (
-                      <div key={idx} className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-3">
+                      <div key={idx} className="bg-surface-sunk border border-line rounded-xl p-3 space-y-3">
                         <div className="flex gap-2 items-center">
                           <div className="flex-1 flex items-center gap-2">
-                            <span className="text-gray-500 dark:text-gray-400 text-sm font-bold font-chivo">Time</span>
+                            <span className="text-ink-muted text-sm font-bold font-chivo">Time</span>
                             <input
                               type="time"
                               value={rule.time || "20:00"}
                               onChange={(e) => setRule({ time: e.target.value })}
-                              className="flex-1 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              className="flex-1 bg-surface-raised border border-line rounded-lg px-3 py-2 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-accent/40"
                             />
                           </div>
                           <button
                             onClick={() => updateRules(rules.filter((_, i) => i !== idx),
                                                        { immediate: true, message: "Schedule removed" })}
-                            className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+                            className="p-2 text-ink-subtle hover:text-danger hover:bg-danger-soft rounded-lg transition-colors"
                             title="Remove schedule"
                           >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
@@ -621,10 +622,8 @@ export default function Settings() {
                                   }
                                   setRule({ days: next }, { immediate: true });
                                 }}
-                                className={`flex-1 h-8 rounded-lg text-xs font-bold font-chivo transition-colors ${
-                                  on
-                                    ? "bg-orange-500 text-white"
-                                    : "bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500"
+                                className={`flex-1 h-8 rounded-lg text-xs font-bold font-chivo transition-colors ${ on ?"bg-accent text-white"
+                                    : "bg-surface-raised border border-line text-ink-subtle"
                                 }`}
                               >
                                 {label}
@@ -636,9 +635,9 @@ export default function Settings() {
                     );
                   })}
                   {rules.length === 0 && (
-                    <p className="text-sm text-gray-500 dark:text-gray-500 italic py-2">No schedules set. You will not receive any daily reminders.</p>
+                    <p className="text-sm text-ink-muted italic py-2">No schedules set. You will not receive any daily reminders.</p>
                   )}
-                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                  <p className="text-xs text-ink-muted mt-2">
                     Your reminders will be sent around these times in your local timezone.
                   </p>
                 </div>
@@ -650,15 +649,15 @@ export default function Settings() {
         {/* AI Key tab */}
         {activeTab === "ai" && (
           <div className="space-y-4">
-            <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
-              <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">AI Connection Status</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4 leading-relaxed">
+            <div className="bg-surface-raised rounded-2xl border border-line p-5">
+              <h3 className="font-bold font-chivo text-ink mb-1">AI Connection Status</h3>
+              <p className="text-xs text-ink-subtle font-manrope mb-4 leading-relaxed">
                 Forge is globally connected to your private Azure AI Foundry workspace.
               </p>
 
-              <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-100 dark:border-orange-900/50 rounded-xl p-3 mb-4">
-                <p className="text-xs font-bold text-orange-700 dark:text-orange-400 font-chivo mb-1">Current State</p>
-                <p className="text-xs text-orange-600 dark:text-orange-400 font-manrope">
+              <div className="bg-accent-soft border border-accent/25 rounded-xl p-3 mb-4">
+                <p className="text-xs font-bold text-accent-bold font-chivo mb-1">Current State</p>
+                <p className="text-xs text-accent-bold font-manrope">
                   Globally Authenticated via Backend Host
                 </p>
               </div>
@@ -667,7 +666,7 @@ export default function Settings() {
                 <button
                   onClick={testApiKey}
                   disabled={saving}
-                  className="w-full py-3 bg-gray-900 text-white font-chivo font-bold text-sm uppercase tracking-wide rounded-xl hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50"
+                  className="w-full py-3 bg-ink text-white font-chivo font-bold text-sm rounded-xl active:scale-95 transition-all disabled:opacity-50"
                 >
                   {saving ? "Pinging Azure Servers..." : "Test AI Model Connection"}
                 </button>
@@ -678,35 +677,35 @@ export default function Settings() {
 
         {/* Mode tab */}
         {activeTab === "mode" && (
-          <div className="bg-white dark:bg-gray-950 rounded-2xl border border-gray-100 dark:border-gray-800 p-5">
-            <h3 className="font-bold font-chivo text-gray-900 dark:text-white mb-1">Coach Mode</h3>
-            <p className="text-xs text-gray-400 dark:text-gray-500 font-manrope mb-4">
-              Current: <span className="font-bold text-orange-600">{user?.mode}</span>
+          <div className="bg-surface-raised rounded-2xl border border-line p-5">
+            <h3 className="font-bold font-chivo text-ink mb-1">Coach Mode</h3>
+            <p className="text-xs text-ink-subtle font-manrope mb-4">
+              Current: <span className="font-bold text-accent-bold">{user?.mode}</span>
             </p>
-            <p className="text-sm text-gray-600 dark:text-gray-500 font-manrope leading-relaxed">
-              To change your coach mode, visit the <a href="/coach" className="text-orange-500 font-bold">AI Coach</a> page
+            <p className="text-sm text-ink-muted font-manrope leading-relaxed">
+              To change your coach mode, visit the <a href="/coach" className="text-accent font-bold">AI Coach</a> page
               and select a different mode. Direct Mode requires an activation reason.
             </p>
             {user?.mode === "direct" && user?.direct_mode_reason && (
-              <div className="mt-4 bg-red-50 border border-red-100 rounded-xl p-3">
-                <p className="text-xs font-bold text-red-700 font-chivo mb-1">Your Direct Mode reason:</p>
-                <p className="text-sm text-red-600 font-manrope">"{user.direct_mode_reason}"</p>
+              <div className="mt-4 bg-danger-soft border border-danger/25 rounded-xl p-3">
+                <p className="text-xs font-bold text-danger font-chivo mb-1">Your Direct Mode reason:</p>
+                <p className="text-sm text-danger font-manrope">"{user.direct_mode_reason}"</p>
               </div>
             )}
           </div>
         )}
         {/* Danger Zone tab */}
         {activeTab === "danger" && (
-          <div className="bg-white dark:bg-gray-950 rounded-2xl border border-red-200 dark:border-red-900/50 p-5">
-            <h3 className="font-bold font-chivo text-red-600 mb-1">Danger Zone</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-500 font-manrope leading-relaxed mb-4">
+          <div className="bg-surface-raised rounded-2xl border border-danger/25 p-5">
+            <h3 className="font-bold font-chivo text-danger mb-1">Danger Zone</h3>
+            <p className="text-sm text-ink-muted font-manrope leading-relaxed mb-4">
               Permanently delete your account and all associated data (habits, check-ins, moods, achievements, insights). 
               <strong className="block mt-1">This action cannot be undone.</strong>
             </p>
             
-            <div className="space-y-4 pt-4 border-t border-red-100">
+            <div className="space-y-4 pt-4 border-t border-danger/25">
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 font-manrope mb-2">
+                <label className="block text-xs font-bold text-ink font-manrope mb-2">
                   Confirm Password to Delete Account:
                 </label>
                 <input
@@ -714,13 +713,13 @@ export default function Settings() {
                   value={deletePassword}
                   onChange={(e) => setDeletePassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full bg-gray-50 dark:bg-gray-900 border border-red-200 rounded-xl px-4 py-3 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-red-400"
+                  className="w-full bg-surface-sunk border border-danger/25 rounded-xl px-4 py-3 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-danger"
                 />
               </div>
               <button
-                onClick={deleteAccount}
+                onClick={() => setConfirmWipe(true)}
                 disabled={!deletePassword || deleting}
-                className="w-full py-3 bg-red-600 text-white font-chivo font-bold text-sm uppercase tracking-wide rounded-xl hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50"
+                className="w-full py-3 bg-danger text-white font-chivo font-bold text-sm rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
               >
                 {deleting ? "Deleting..." : "Permanently Delete Account"}
               </button>
@@ -728,6 +727,27 @@ export default function Settings() {
           </div>
         )}
       </div>
-    </div>
+
+      <ConfirmSheet
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={deleteHabit}
+        destructive
+        title={`Remove ${confirmDelete?.name ?? "this habit"}?`}
+        description="It disappears from your daily list. Your past check-ins stay, so your history and streaks are unaffected."
+        confirmLabel="Remove"
+      />
+
+      <ConfirmSheet
+        open={confirmWipe}
+        onClose={() => setConfirmWipe(false)}
+        onConfirm={deleteAccount}
+        destructive
+        busy={deleting}
+        title="Delete your account?"
+        description="This erases your habits, check-ins, moods, achievements and insights. It cannot be undone."
+        confirmLabel="Delete everything"
+      />
+    </Screen>
   );
 }

@@ -1,0 +1,84 @@
+/* ── Semantic tokens ─────────────────────────────────────────────────────────
+   Components name roles (surface, text-muted, accent) rather than palette steps
+   (orange-50, gray-500). Before this, dark mode was applied by hand-writing a
+   `dark:` variant next to every colour class — and roughly forty of them were
+   missed, so status boxes, coach chips, onboarding cards and one whole Landing
+   section rendered light-on-light at night. Naming the role makes that class of
+   bug structurally impossible: there is one definition per theme, here.
+
+   Channels are space-separated RGB so Tailwind's `<alpha-value>` works, e.g.
+   `bg-accent/10`.
+
+   The neutrals are warm (a hint of red in the greys) rather than Tailwind's
+   default cool greys. It's a small shift, but a forge shouldn't read blue, and
+   warm neutrals sit better beside the orange than slate does. */
+
+:root {
+  --surface:          250 249 248;   /* page ground */
+  --surface-raised:   255 255 255;   /* rows, sheets, anything lifted */
+  --surface-sunk:     241 239 237;   /* insets, progress tracks, inputs */
+  --border:           231 227 224;   /* hairlines between rows */
+  --border-strong:    214 209 205;   /* outlines that must be seen */
+
+  --text:             28 25 23;      /* primary copy */
+  --text-muted:       107 99 93;     /* secondary copy — passes AA on surface */
+  --text-subtle:      154 145 139;   /* timestamps, units, non-essential */
+
+  /* Orange is the brand, and it now means exactly one thing: progress —
+     completion, streak, the level bar. It is deliberately NOT used for generic
+     buttons any more, because when everything is the accent nothing is. */
+  --accent:           234 88 12;
+  --accent-bold:      194 65 12;
+  --accent-soft:      255 243 236;   /* tinted surface behind accent content */
+  --accent-contrast:  255 255 255;   /* text/icon on a filled accent */
+
+  --success:          21 128 61;
+  --success-soft:     236 253 243;
+  --warning:          180 83 9;
+  --warning-soft:     254 247 231;
+  --danger:           185 28 28;
+  --danger-soft:      254 242 242;
+
+  --shadow-sheet: 0 -8px 40px -12px rgb(28 25 23 / 0.25);
+  --shadow-row:   0 1px 2px rgb(28 25 23 / 0.04);
+}
+
+.dark {
+  --surface:          18 16 15;
+  --surface-raised:   28 25 23;
+  --surface-sunk:     12 10 9;
+  --border:           44 39 36;
+  --border-strong:    61 55 51;
+
+  --text:             245 243 241;
+  --text-muted:       168 160 154;
+  --text-subtle:      120 112 106;
+
+  /* Not an inversion: orange-600 is muddy on near-black, so the dark theme steps
+     up to a lighter orange that holds its chroma against this ground. */
+  --accent:           251 146 60;
+  --accent-bold:      253 186 116;
+  --accent-soft:      42 23 16;
+  --accent-contrast:  28 25 23;
+
+  --success:          74 222 128;
+  --success-soft:     11 36 23;
+  --warning:          251 191 36;
+  --warning-soft:      42 30 8;
+  --danger:           248 113 113;
+  --danger-soft:      42 18 18;
+
+  --shadow-sheet: 0 -8px 40px -12px rgb(0 0 0 / 0.6);
+  --shadow-row:   0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+/* Chart tokens derive from the same accent so the charts can never drift from
+   the rest of the UI. */
+:root {
+  --chart-accent:      rgb(var(--accent));
+  --chart-accent-fill: rgb(var(--accent) / 0.18);
+  --chart-muted:       rgb(var(--border-strong));
+  --chart-grid:        rgb(var(--border));
+  --chart-axis:        rgb(var(--text-subtle));
+  --chart-surface:     rgb(var(--surface-raised));
+}

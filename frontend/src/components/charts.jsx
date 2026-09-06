@@ -40,13 +40,12 @@ function Tooltip({ x, y, label, value, width }) {
   const flip = y < 44;
   return (
     <div
-      className={`pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 shadow-lg dark:border-gray-700 dark:bg-gray-900 ${
-        flip ? "translate-y-2" : "-translate-y-full"
+      className={`pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg border border-line bg-surface-raised px-2.5 py-1.5 shadow-lg ${ flip ?"translate-y-2" : "-translate-y-full"
       }`}
       style={{ left: clamped, top: flip ? y : Math.max(y - 8, 0) }}
     >
-      <p className="whitespace-nowrap font-manrope text-[10px] leading-none text-gray-400 dark:text-gray-500">{label}</p>
-      <p className="mt-0.5 whitespace-nowrap font-chivo text-sm font-bold leading-none text-gray-900 dark:text-white">{value}</p>
+      <p className="whitespace-nowrap font-manrope text-[10px] leading-none text-ink-subtle">{label}</p>
+      <p className="mt-0.5 whitespace-nowrap font-chivo text-sm font-bold leading-none text-ink">{value}</p>
     </div>
   );
 }
