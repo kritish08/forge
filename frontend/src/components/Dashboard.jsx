@@ -9,7 +9,8 @@ import { isoWeekMonday } from "../utils/date";
 import { useCachedQuery, invalidate } from "../hooks/useCachedQuery";
 import Screen, { Group } from "./Screen";
 import Sheet from "./Sheet";
-import { Check, Chevron, Flame } from "./icons";
+import { Check, Chevron, Flame, Plus } from "./icons";
+import AddHabitSheet from "./HabitForm";
 import { HabitRowSkeleton, Skeleton } from "./Skeleton";
 import { tapSuccess, tapLight, tapError } from "../utils/haptics";
 
@@ -98,6 +99,7 @@ export default function Dashboard() {
   const [moodRating, setMoodRating] = useState(null);
   const [gratitude, setGratitude] = useState("");
   const [wellness, setWellness] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const monday = isoWeekMonday(todayStr);
 
@@ -204,6 +206,17 @@ export default function Dashboard() {
     <Screen
       title={allDone ? "All done today" : `Hey, ${firstName}`}
       subtitle={dateLabel}
+      action={
+        <button
+          type="button"
+          data-testid="add-habit-fab"
+          onClick={() => setAddOpen(true)}
+          aria-label="Add a habit"
+          className="grid h-9 w-9 place-items-center rounded-full text-ink-muted transition-colors active:bg-surface-sunk"
+        >
+          <Plus className="h-5 w-5" />
+        </button>
+      }
     >
       {/* The one bold element on the screen. The streak is what the product is
           about, so it gets the accent and the weight; points and level sit
@@ -243,10 +256,17 @@ export default function Dashboard() {
         </div>
       ) : habits.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line-strong px-6 py-12 text-center">
-          <p className="font-chivo text-base font-semibold text-ink">No habits yet</p>
-          <p className="mx-auto mt-1.5 max-w-[34ch] text-sm text-ink-muted">
-            Add your first one in Settings and it'll show up here every day it's due.
+          <p className="font-chivo text-base font-semibold text-ink">Nothing to track yet</p>
+          <p className="mx-auto mt-1.5 max-w-[34ch] text-sm leading-relaxed text-ink-muted">
+            Add your first habit and it'll appear here every day it's due.
           </p>
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-accent px-5 py-3 font-chivo text-sm font-bold text-accent-contrast transition-transform active:scale-[0.98]"
+          >
+            <Plus className="h-4 w-4" />Add a habit
+          </button>
         </div>
       ) : (
         <div className="space-y-5">
@@ -408,6 +428,19 @@ export default function Dashboard() {
           ))}
         </div>
       </Sheet>
+
+      <AddHabitSheet
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        existingNames={habits.map((h) => h.name)}
+        onCreate={async (habit) => {
+          await api.post("/habits", habit);
+          invalidate("habits", "stats");
+          habitsQ.refetch();
+          statsQ.refetch();
+          toast.success(`${habit.name} added`);
+        }}
+      />
 
       {selectedHabit && (
         <HabitDetailModal

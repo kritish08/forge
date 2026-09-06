@@ -26,7 +26,7 @@ export default function Login() {
       if (isForgotPassword) {
         // Password reset request
         await api.post("/auth/forgot-password", { email: formData.email.trim() });
-        toast.success("Password reset link sent! Check your email 📧");
+        toast.success("Reset link sent. Check your email.");
         setIsForgotPassword(false);
         setFormData({ email: "", password: "", name: "" });
       } else {
@@ -44,10 +44,10 @@ export default function Login() {
         // Set user in context
         setUser(res.data.user);
 
-        toast.success(isRegistering ? "Welcome to FORGE! 🔥" : "Welcome back! 🔥");
+        toast.success(isRegistering ? "Welcome to FORGE" : "Welcome back");
       }
     } catch (err) {
-      const msg = err.response?.data?.detail || "Authentication failed";
+      const msg = err.response?.data?.detail || "Couldn't sign you in. Check your email and password.";
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -77,12 +77,11 @@ export default function Login() {
         {!isRegistering && (
           <div className="w-full max-w-sm space-y-3 mb-10">
             {[
-              { icon: "🧠", text: "AI that learns YOUR specific patterns" },
-              { icon: "📊", text: "Insights no generic app can give you" },
-              { icon: "🔥", text: "Adaptive coaching as you grow" },
+              { text: "Learns which days and times you actually follow through" },
+              { text: "Insights drawn from your own history, not generic advice" },
+              { text: "Coaching that adapts as your habits change" },
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-3 bg-accent-soft rounded-xl p-4 border border-accent/25">
-                <span className="text-xl">{item.icon}</span>
                 <p className="text-sm text-ink font-manrope font-medium">{item.text}</p>
               </div>
             ))}

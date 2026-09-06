@@ -2,294 +2,305 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
 import { toast } from "sonner";
-import { FrequencyPicker, FrequencyBadge } from "./FrequencyPicker";
+import { FrequencyBadge } from "./FrequencyPicker";
+import { HabitFields, TemplatePicker, EMPTY_HABIT } from "./HabitForm";
+import Sheet from "./Sheet";
+import { Trash, Plus, Check } from "./icons";
+import { deviceTimeZone } from "../utils/date";
 
+// Direct mode is the one choice with a consequence, so it is the only one
+// flagged. The other two are presented as a preference, not a warning.
 const MODES = [
   {
     id: "supportive",
     label: "Supportive",
-    subtitle: "Warm coaching",
-    desc: "Celebrate progress, gentle guidance, encouraging tone. Best for building initial momentum.",
-    color: "border-line",
-    activeColor: "border-accent bg-accent-soft",
+    desc: "Warm and encouraging. Celebrates what's working and stays gentle when it isn't.",
   },
   {
     id: "strategic",
     label: "Strategic",
-    subtitle: "Data-driven",
-    desc: "Pattern recognition, optimization insights, analytical feedback. For performance-focused builders.",
-    color: "border-line",
-    activeColor: "border-accent bg-accent-soft",
+    desc: "Analytical. Looks for patterns in your data and suggests adjustments.",
   },
   {
     id: "direct",
     label: "Direct",
-    subtitle: "Brutally honest",
-    desc: "Zero tolerance. Raw truth. Harsh feedback. Requires activation reason. Not for the faint-hearted.",
-    color: "border-line",
-    activeColor: "border-danger bg-danger-soft",
+    desc: "Blunt, with no softening. It will quote your own reason back at you.",
+    caution: true,
   },
 ];
+
+const STEPS = ["Welcome", "Habits", "Coaching"];
 
 export default function Onboarding() {
   const { setUser } = useAuth();
   const [step, setStep] = useState(1);
   const [habits, setHabits] = useState([]);
-  const [newHabit, setNewHabit] = useState({ name: "", priority: 1, context: "", frequency_type: "daily", frequency_days: [], frequency_target: 7 });
+  const [draft, setDraft] = useState(null);
   const [mode, setMode] = useState("supportive");
   const [directReason, setDirectReason] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const addHabit = () => {
-    if (!newHabit.name.trim()) return;
-    if (newHabit.frequency_type === "specific_days" && newHabit.frequency_days.length === 0) {
-      toast.error("Select at least one day.");
+  const commitDraft = () => {
+    if (!draft?.name.trim()) return;
+    if (draft.frequency_type === "specific_days" && draft.frequency_days.length === 0) {
+      toast.error("Pick at least one day for this habit.");
       return;
     }
-    setHabits([...habits, { ...newHabit, id: Date.now() }]);
-    setNewHabit({ name: "", priority: 1, context: "", frequency_type: "daily", frequency_days: [], frequency_target: 7 });
+    setHabits((hs) => [...hs, { ...draft, id: `${Date.now()}-${hs.length}` }]);
+    setDraft(null);
   };
-
-  const removeHabit = (id) => setHabits(habits.filter((h) => h.id !== id));
 
   const finish = async () => {
     if (mode === "direct" && !directReason.trim()) {
-      toast.error("Please provide your reason for Direct Mode.");
+      toast.error("Direct mode needs a reason — it's what the coach holds you to.");
       return;
     }
     setLoading(true);
     try {
-      // Create habits
-      for (const h of habits) {
-        await api.post("/habits", {
-          name: h.name, priority: h.priority, context: h.context,
-          frequency_type: h.frequency_type, frequency_days: h.frequency_days, frequency_target: h.frequency_target
-        });
-      }
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      // Update user settings
+      // Created in parallel: this used to be a sequential await loop, so five
+      // habits meant five round trips before anything happened.
+      await Promise.all(habits.map((h) => api.post("/habits", {
+        name: h.name, priority: h.priority, context: h.context,
+        frequency_type: h.frequency_type, frequency_days: h.frequency_days,
+        frequency_target: h.frequency_target,
+      })));
       const res = await api.put("/user/settings", {
         mode,
         direct_mode_reason: directReason,
         onboarding_completed: true,
-        timezone: tz,
+        timezone: deviceTimeZone(),
       });
       setUser(res.data);
     } catch {
-      toast.error("Something went wrong. Please try again.");
+      toast.error("Couldn't finish setting up. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
   };
 
+  const back = () => setStep((s) => Math.max(1, s - 1));
+
   return (
-    <div className="min-h-screen bg-surface-raised flex flex-col max-w-lg mx-auto px-6 py-8">
-      {/* Progress dots */}
-      <div className="flex gap-2 mb-8">
-        {[1, 2, 3].map((s) => (
-          <div
-            key={s}
-            className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${s <= step ?"bg-accent" : "bg-surface-sunk"}`}
-          />
-        ))}
+    <div
+      className="mx-auto flex min-h-screen max-w-lg flex-col bg-surface px-5"
+      style={{
+        paddingTop: "calc(env(safe-area-inset-top, 0px) + 1.5rem)",
+        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.5rem)",
+      }}
+    >
+      {/* Progress. Named steps rather than anonymous dots, so it's clear what's
+          left — and there is now a way back from every one of them. */}
+      <div className="mb-6 flex items-center gap-3">
+        {step > 1 ? (
+          <button
+            type="button"
+            onClick={back}
+            aria-label="Back"
+            className="-ml-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-muted transition-colors active:bg-surface-sunk"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="h-5 w-5" aria-hidden="true"><path d="M15 19 8 12l7-7" /></svg>
+          </button>
+        ) : <div className="h-8 w-8 shrink-0" />}
+        <div className="flex flex-1 gap-1.5">
+          {STEPS.map((label, i) => (
+            <div key={label} className="flex-1">
+              <div className={`h-1 rounded-full ${i < step ? "bg-accent" : "bg-surface-sunk"}`} />
+              <span className={`mt-1.5 block text-[11px] ${i < step ? "text-ink-muted" : "text-ink-subtle"}`}>
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Step 1: Welcome */}
+      {/* ── 1. Welcome ─────────────────────────────────────────────────────── */}
       {step === 1 && (
-        <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="mb-8">
-            <div className="w-14 h-14 bg-accent rounded-2xl flex items-center justify-center mb-6">
-              <span className="text-3xl">🔥</span>
-            </div>
-            <h1 className="text-4xl font-black text-ink font-chivo tracking-tight mb-3">
-              Welcome to<br />FORGE
+        <div className="flex flex-1 flex-col">
+          <div className="mb-8 mt-4">
+            <h1 className="font-chivo text-[34px] font-bold leading-[1.1] tracking-tight text-ink">
+              Let's set up<br />your habits
             </h1>
-            <p className="text-ink-muted font-manrope text-base leading-relaxed">
-              This isn't a generic habit tracker. Forge studies your patterns, remembers your history,
-              and gives you insights no one else can.
+            <p className="mt-3 max-w-[38ch] leading-relaxed text-ink-muted">
+              Three quick steps. You can change any of it later.
             </p>
           </div>
-          <div className="space-y-3 mb-10">
+          <ul className="mb-10 space-y-3.5">
             {[
-              "Track habits with priority weighting",
-              "AI that detects your unique patterns",
-              "Insights that evolve as you grow",
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div className="w-5 h-5 rounded-full bg-accent flex items-center justify-center flex-shrink-0">
-                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <span className="text-ink font-manrope text-sm font-medium">{item}</span>
-              </div>
+              "Pick a few habits — start smaller than you think",
+              "FORGE watches when you actually follow through",
+              "You get insights from your own patterns, not generic advice",
+            ].map((item) => (
+              <li key={item} className="flex items-start gap-3">
+                <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent text-accent-contrast">
+                  <Check className="h-3 w-3" />
+                </span>
+                <span className="text-[15px] leading-snug text-ink">{item}</span>
+              </li>
             ))}
-          </div>
-          <button
-            data-testid="onboarding-next-step1"
-            onClick={() => setStep(2)}
-            className="w-full py-4 bg-accent text-white font-chivo font-bold rounded-xl active:scale-95 transition-all"
-          >
-            Let's Build Your System
-          </button>
-        </div>
-      )}
-
-      {/* Step 2: Add habits */}
-      {step === 2 && (
-        <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="mb-6">
-            <h2 className="text-2xl font-black text-ink font-chivo mb-1">Your Habits</h2>
-            <p className="text-ink-muted text-sm font-manrope">
-              Add 3–5 habits. Priority determines point weight (⭐ = 1pt, ⭐⭐⭐ = 3pts daily).
-            </p>
-          </div>
-
-          {/* Habit list */}
-          <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
-            {habits.map((h) => (
-              <div key={h.id} className="flex items-center gap-2 bg-surface-sunk rounded-xl p-3 border border-line">
-                <div className="flex gap-0.5">
-                  {[1, 2, 3].map((s) => (
-                    <span key={s} className={`text-sm ${s <= h.priority ?"text-accent" : "text-ink-subtle"}`}>★</span>
-                  ))}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-ink font-manrope truncate">{h.name}</p>
-                  <div className="flex items-center gap-2">
-                    {h.context && <p className="text-xs text-ink-subtle truncate">For: {h.context}</p>}
-                    <FrequencyBadge habit={h} />
-                  </div>
-                </div>
-                <button onClick={() => removeHabit(h.id)} className="text-ink-subtle hover:text-danger transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* Add habit form */}
-          <div className="bg-accent-soft rounded-2xl p-4 border border-accent/25 mb-6">
-            <input
-              data-testid="habit-name-input"
-              value={newHabit.name}
-              onChange={(e) => setNewHabit({ ...newHabit, name: e.target.value })}
-              onKeyDown={(e) => e.key === "Enter" && addHabit()}
-              placeholder="Habit name (e.g. Morning run)"
-              className="w-full bg-surface-raised border border-accent/25 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <input
-              value={newHabit.context}
-              onChange={(e) => setNewHabit({ ...newHabit, context: e.target.value })}
-              placeholder="What is this for? (optional)"
-              className="w-full bg-surface-raised border border-accent/25 rounded-xl px-4 py-3 text-sm font-manrope mb-3 focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <div className="flex items-center gap-3 mb-3">
-              <span className="text-xs text-ink-muted font-manrope">Priority:</span>
-              {[1, 2, 3].map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setNewHabit({ ...newHabit, priority: p })}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${ newHabit.priority === p ?"bg-accent text-white"
-                      : "bg-surface-raised border border-accent/25 text-accent"
-                  }`}
-                >
-                  {"⭐".repeat(p)}
-                </button>
-              ))}
-            </div>
-            <FrequencyPicker
-              frequencyType={newHabit.frequency_type}
-              frequencyDays={newHabit.frequency_days}
-              frequencyTarget={newHabit.frequency_target}
-              onChange={(f) => setNewHabit({ ...newHabit, ...f })}
-            />
-            <div className="mt-3" />
+          </ul>
+          <div className="mt-auto">
             <button
-              data-testid="add-habit-btn"
-              onClick={addHabit}
-              disabled={!newHabit.name.trim()}
-              className="w-full py-3 bg-accent text-white font-chivo font-bold text-sm rounded-xl disabled:opacity-40 active:scale-95 transition-all"
+              type="button"
+              data-testid="onboarding-next-step1"
+              onClick={() => setStep(2)}
+              className="w-full rounded-xl bg-accent py-4 font-chivo font-bold text-accent-contrast transition-transform active:scale-[0.98]"
             >
-              + Add Habit
+              Get started
             </button>
           </div>
-
-          <button
-            data-testid="onboarding-next-step2"
-            onClick={() => setStep(3)}
-            disabled={habits.length === 0}
-            className="w-full py-4 bg-ink text-white font-chivo font-bold rounded-xl disabled:opacity-40 active:scale-95 transition-all"
-          >
-            Next: Choose Your Mode →
-          </button>
         </div>
       )}
 
-      {/* Step 3: Choose mode */}
-      {step === 3 && (
-        <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="mb-6">
-            <h2 className="text-2xl font-black text-ink font-chivo mb-1">Your Coach Mode</h2>
-            <p className="text-ink-muted text-sm font-manrope">
-              Choose how FORGE talks to you. You can change this anytime.
-            </p>
-          </div>
+      {/* ── 2. Habits ──────────────────────────────────────────────────────── */}
+      {step === 2 && (
+        <div className="flex flex-1 flex-col">
+          <h2 className="font-chivo text-2xl font-bold tracking-tight text-ink">Your habits</h2>
+          <p className="mb-5 mt-1.5 text-[15px] leading-relaxed text-ink-muted">
+            Two or three is a good start. Adding ten and keeping none is the usual failure.
+          </p>
 
-          <div className="space-y-3 mb-6">
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                data-testid={`mode-select-${m.id}`}
-                onClick={() => setMode(m.id)}
-                className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${ mode === m.id ? m.activeColor : m.color }`}
-              >
-                <div className="flex items-center gap-3 mb-1">
-                  <div>
-                    <span className="font-bold font-chivo text-ink">{m.label}</span>
-                    <span className="text-xs text-ink-muted ml-2 font-manrope">{m.subtitle}</span>
-                  </div>
-                  {mode === m.id && (
-                    <div className="ml-auto w-5 h-5 rounded-full bg-accent flex items-center justify-center">
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
+          {habits.length > 0 && (
+            <ul className="mb-4 overflow-hidden rounded-2xl border border-line bg-surface-raised">
+              {habits.map((h) => (
+                <li key={h.id} className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15px] font-semibold text-ink">{h.name}</p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <FrequencyBadge habit={h} />
+                      <span className="text-xs text-ink-subtle">{h.priority} pt{h.priority > 1 ? "s" : ""}</span>
                     </div>
-                  )}
-                </div>
-                <p className="text-xs text-ink-muted font-manrope leading-relaxed ml-8">{m.desc}</p>
-              </button>
-            ))}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${h.name}`}
+                    onClick={() => setHabits((hs) => hs.filter((x) => x.id !== h.id))}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-subtle transition-colors active:bg-surface-sunk"
+                  >
+                    <Trash className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <TemplatePicker
+            taken={habits.map((h) => h.name)}
+            onPick={(t) => setDraft(t)}
+            onBlank={() => setDraft({ ...EMPTY_HABIT })}
+          />
+
+          <div className="mt-6">
+            <button
+              type="button"
+              data-testid="onboarding-next-step2"
+              onClick={() => setStep(3)}
+              disabled={habits.length === 0}
+              className="w-full rounded-xl bg-accent py-4 font-chivo font-bold text-accent-contrast transition-transform active:scale-[0.98] disabled:opacity-40"
+            >
+              {habits.length === 0
+                ? "Add at least one habit"
+                : `Continue with ${habits.length} habit${habits.length > 1 ? "s" : ""}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── 3. Coaching ────────────────────────────────────────────────────── */}
+      {step === 3 && (
+        <div className="flex flex-1 flex-col">
+          <h2 className="font-chivo text-2xl font-bold tracking-tight text-ink">How should the coach talk to you?</h2>
+          <p className="mb-5 mt-1.5 text-[15px] leading-relaxed text-ink-muted">
+            You can switch at any time from the Coach tab.
+          </p>
+
+          <div className="space-y-2.5">
+            {MODES.map((m) => {
+              const active = mode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  data-testid={`mode-select-${m.id}`}
+                  onClick={() => setMode(m.id)}
+                  aria-pressed={active}
+                  className={`w-full rounded-2xl border p-4 text-left transition-colors ${
+                    active
+                      ? m.caution ? "border-danger bg-danger-soft" : "border-accent bg-accent-soft"
+                      : "border-line bg-surface-raised"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-chivo text-[15px] font-bold text-ink">{m.label}</span>
+                    {active && (
+                      <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-accent-contrast ${m.caution ? "bg-danger" : "bg-accent"}`}>
+                        <Check className="h-3 w-3" />
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">{m.desc}</p>
+                </button>
+              );
+            })}
           </div>
 
           {mode === "direct" && (
-            <div className="mb-4 bg-danger-soft border border-danger/25 rounded-2xl p-4">
-              <p className="text-xs text-danger font-manrope font-medium mb-2">
-                Why do you want Direct Mode? Be honest — the AI will reference this.
-              </p>
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">Why do you want this?</span>
               <textarea
                 data-testid="direct-reason-input"
                 value={directReason}
                 onChange={(e) => setDirectReason(e.target.value)}
-                placeholder="e.g., I keep making excuses. I need someone to call me out..."
-                className="w-full bg-surface-raised border border-danger/25 rounded-xl px-3 py-2 text-sm font-manrope resize-none focus:outline-none focus:ring-2 focus:ring-danger"
                 rows={3}
+                placeholder="e.g. I keep talking myself out of things and I want that called out."
+                className="w-full resize-none rounded-xl border border-line bg-surface-sunk px-3.5 py-3 text-[15px] text-ink placeholder:text-ink-subtle focus:border-danger focus:outline-none focus:ring-2 focus:ring-danger/30"
               />
-            </div>
+            </label>
           )}
 
-          <button
-            data-testid="complete-onboarding-btn"
-            onClick={finish}
-            disabled={loading || (mode === "direct" && !directReason.trim())}
-            className="w-full py-4 bg-accent text-white font-chivo font-bold rounded-xl disabled:opacity-40 active:scale-95 transition-all"
-          >
-            {loading ? "Setting up..." : "Start Forging 🔥"}
-          </button>
+          <div className="mt-auto pt-6">
+            <button
+              type="button"
+              data-testid="complete-onboarding-btn"
+              onClick={finish}
+              disabled={loading || (mode === "direct" && !directReason.trim())}
+              className="w-full rounded-xl bg-accent py-4 font-chivo font-bold text-accent-contrast transition-transform active:scale-[0.98] disabled:opacity-40"
+            >
+              {loading ? "Setting up…" : "Start tracking"}
+            </button>
+          </div>
         </div>
       )}
+
+      {/* Editing a habit before it's added */}
+      <Sheet
+        open={!!draft}
+        onClose={() => setDraft(null)}
+        title="New habit"
+        footer={
+          <div className="flex gap-3 pb-1">
+            <button
+              type="button"
+              onClick={() => setDraft(null)}
+              className="rounded-xl border border-line px-4 py-3 font-chivo text-sm font-bold text-ink-muted transition-transform active:scale-[0.98]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              data-testid="add-habit-btn"
+              onClick={commitDraft}
+              disabled={!draft?.name.trim()}
+              className="flex-1 rounded-xl bg-accent py-3 font-chivo text-sm font-bold text-accent-contrast transition-transform active:scale-[0.98] disabled:opacity-40"
+            >
+              <span className="inline-flex items-center gap-1.5"><Plus className="h-4 w-4" />Add habit</span>
+            </button>
+          </div>
+        }
+      >
+        <div className="pb-4">
+          {draft && <HabitFields value={draft} onChange={setDraft} autoFocus />}
+        </div>
+      </Sheet>
     </div>
   );
 }

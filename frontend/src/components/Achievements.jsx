@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import api from "../utils/api";
 import Screen from "./Screen";
+import { Flame, Check, Chart } from "./icons";
 import { CardSkeleton } from "./Skeleton";
 
 // The achievement catalogue is served from GET /api/achievements/catalog. It used
@@ -65,6 +66,10 @@ export default function Achievements() {
             </div>
           </div>
           <div>
+            <p className="mb-2 text-[13px] leading-relaxed opacity-90">
+              Every check-in earns its habit's points. Levels are the running total —
+              a way to see months of small days adding up.
+            </p>
             <div className="flex justify-between text-xs opacity-80 font-manrope mb-1">
               <span>Level {level}</span>
               <span>
@@ -86,12 +91,12 @@ export default function Achievements() {
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: "Streak", value: `${stats?.streak || 0}d`, icon: "🔥" },
-            { label: "Check-ins", value: stats?.total_checkins || 0, icon: "✅" },
-            { label: "Consistency", value: `${stats?.completion_rate || 0}%`, icon: "📊" },
+            { label: "Streak", value: `${stats?.streak || 0}d`, Icon: Flame },
+            { label: "Check-ins", value: stats?.total_checkins || 0, Icon: Check },
+            { label: "Consistency", value: `${stats?.completion_rate || 0}%`, Icon: Chart },
           ].map((s) => (
             <div key={s.label} className="bg-surface-raised border border-line rounded-2xl p-3 text-center">
-              <p className="text-xl mb-1">{s.icon}</p>
+              <s.Icon className="mx-auto mb-1.5 h-5 w-5 text-ink-muted" />
               <p className="text-lg font-black text-ink font-chivo">{s.value}</p>
               <p className="text-xs text-ink-subtle font-manrope">{s.label}</p>
             </div>

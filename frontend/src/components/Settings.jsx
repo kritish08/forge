@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import Screen from "./Screen";
 import { ConfirmSheet } from "./Sheet";
 import { Bell, Mail, Globe, Pencil, Trash } from "./icons";
+import TimezoneField from "./TimezoneField";
 import { FrequencyPicker, FrequencyBadge } from "./FrequencyPicker";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -59,7 +60,7 @@ export default function Settings() {
       setHabits([...habits, res.data]);
       invalidate("habits", "stats");
       setNewHabit({ name: "", priority: 1, context: "", frequency_type: "daily", frequency_days: [], frequency_target: 7 });
-      toast.success("Habit added!");
+      toast.success("Habit added");
     } catch {
       toast.error("Failed to add habit.");
     }
@@ -71,7 +72,7 @@ export default function Settings() {
       setHabits(habits.map((h) => h.habit_id === habitId ? { ...h, ...data } : h));
       invalidate("habits", "stats");
       setEditingHabit(null);
-      toast.success("Habit updated!");
+      toast.success("Habit updated");
     } catch {
       toast.error("Failed to update habit.");
     }
@@ -129,7 +130,7 @@ export default function Settings() {
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        toast.error("Permission denied for notifications");
+        toast.error("Your browser blocked notifications. Allow them in site settings to turn this on.");
         return;
       }
 
@@ -145,7 +146,7 @@ export default function Settings() {
       await api.post("/notifications/subscribe", { subscription: subscription.toJSON() });
       await saveSettings({ push_notifications_enabled: true });
       setPushSubscribed(true);
-      toast.success("Push notifications enabled! 🔔");
+      toast.success("Push notifications on");
     } catch (err) {
       console.error("Push Sub Error:", err);
       toast.error("Failed to enable push: " + (err.message || "Unknown error"));
@@ -174,7 +175,7 @@ export default function Settings() {
   const testPush = async () => {
     try {
       await api.post("/notifications/test");
-      toast.success("Test notification sent! Check your device 🔔");
+      toast.success("Test sent — check your device");
     } catch (err) {
       const msg = err.response?.data?.detail || "Failed to send test notification";
       toast.error("Push failed: " + msg);
@@ -185,9 +186,9 @@ export default function Settings() {
     try {
       await api.put("/user/settings", { [field]: !user[field] });
       await refreshUser();
-      toast.success("Email preferences updated");
+      toast.success("Saved");
     } catch {
-      toast.error("Failed to update preferences");
+      toast.error("Couldn't save that. Try again.");
     }
   };
 
@@ -237,7 +238,7 @@ export default function Settings() {
     setDeleting(true);
     try {
       await api.delete("/user/account", { data: { password: deletePassword } });
-      toast.success("Account permanently deleted.");
+      toast.success("Account deleted");
       localStorage.removeItem("access_token");
       window.location.href = "/";
     } catch (err) {
@@ -279,16 +280,25 @@ export default function Settings() {
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex bg-surface-sunk rounded-2xl p-1 mb-5 flex-wrap gap-1">
-          {[{ id: "habits", label: "Habits" }, { id: "notifications", label: "Notifications" }, { id: "ai", label: "AI Key" }, { id: "mode", label: "Mode" }, { id: "danger", label: "Danger" }].map((tab) => (
+        {/* Three tabs, not five. "AI Key" had become a static status panel and
+            "Mode" was a paragraph telling you to go to the Coach tab — two of
+            five tabs did nothing, on a 375px-wide screen. Both now live inside
+            Account, where they belong. */}
+        <div className="mb-5 flex gap-1 rounded-xl bg-surface-sunk p-1">
+          {[
+            { id: "habits", label: "Habits" },
+            { id: "notifications", label: "Reminders" },
+            { id: "account", label: "Account" },
+          ].map((tab) => (
             <button
               key={tab.id}
+              type="button"
               data-testid={`settings-tab-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 min-w-[70px] py-2.5 rounded-xl text-xs sm:text-sm font-bold font-chivo transition-all ${activeTab === tab.id ? (tab.id ==="danger" ? "bg-danger text-white shadow-sm" : "bg-surface-raised text-ink shadow-sm") 
-                : "text-ink-muted "
-                }`}
+              aria-pressed={activeTab === tab.id}
+              className={`flex-1 rounded-lg py-2 font-chivo text-sm font-semibold transition-colors ${
+                activeTab === tab.id ? "bg-surface-raised text-ink shadow-row" : "text-ink-muted"
+              }`}
             >
               {tab.label}
             </button>
@@ -550,16 +560,14 @@ export default function Settings() {
               
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-bold text-ink font-manrope block mb-2">Timezone</label>
-                  <select 
+                  <span className="mb-1.5 block text-sm font-medium text-ink">Timezone</span>
+                  <TimezoneField
                     value={user?.timezone || "UTC"}
-                    onChange={(e) => saveSettings({ timezone: e.target.value }, "Timezone updated!")}
-                    className="w-full bg-surface-sunk border border-line rounded-xl px-4 py-3 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-accent/40"
-                  >
-                    {Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone').map(tz => (
-                      <option key={tz} value={tz}>{tz}</option>
-                    )) : <option value={user?.timezone || "UTC"}>{user?.timezone || "UTC"}</option>}
-                  </select>
+                    onChange={(tz) => saveSettings({ timezone: tz }, "Timezone updated")}
+                  />
+                  <p className="mt-2 text-xs leading-relaxed text-ink-muted">
+                    This decides when your day rolls over and when reminders arrive.
+                  </p>
                 </div>
                 
                 <div className="space-y-3">
@@ -647,81 +655,64 @@ export default function Settings() {
         )}
 
         {/* AI Key tab */}
-        {activeTab === "ai" && (
+        {activeTab === "account" && (
           <div className="space-y-4">
-            <div className="bg-surface-raised rounded-2xl border border-line p-5">
-              <h3 className="font-bold font-chivo text-ink mb-1">AI Connection Status</h3>
-              <p className="text-xs text-ink-subtle font-manrope mb-4 leading-relaxed">
-                Forge is globally connected to your private Azure AI Foundry workspace.
+            <div className="rounded-2xl border border-line bg-surface-raised p-5">
+              <h3 className="mb-1 font-chivo font-bold text-ink">Coach mode</h3>
+              <p className="text-sm leading-relaxed text-ink-muted">
+                Currently <span className="font-semibold text-ink">{user?.mode}</span>.
+                Change it on the <a href="/coach" className="font-semibold text-accent-bold underline underline-offset-2">Coach</a> tab,
+                where you can read what each mode does first.
               </p>
-
-              <div className="bg-accent-soft border border-accent/25 rounded-xl p-3 mb-4">
-                <p className="text-xs font-bold text-accent-bold font-chivo mb-1">Current State</p>
-                <p className="text-xs text-accent-bold font-manrope">
-                  Globally Authenticated via Backend Host
-                </p>
-              </div>
-
-              <div>
-                <button
-                  onClick={testApiKey}
-                  disabled={saving}
-                  className="w-full py-3 bg-ink text-white font-chivo font-bold text-sm rounded-xl active:scale-95 transition-all disabled:opacity-50"
-                >
-                  {saving ? "Pinging Azure Servers..." : "Test AI Model Connection"}
-                </button>
-              </div>
+              {user?.mode === "direct" && user?.direct_mode_reason && (
+                <div className="mt-3 rounded-xl border border-danger/25 bg-danger-soft p-3">
+                  <p className="text-xs text-ink-muted">
+                    <span className="font-semibold text-danger">Your reason:</span> {user.direct_mode_reason}
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
-        )}
 
-        {/* Mode tab */}
-        {activeTab === "mode" && (
-          <div className="bg-surface-raised rounded-2xl border border-line p-5">
-            <h3 className="font-bold font-chivo text-ink mb-1">Coach Mode</h3>
-            <p className="text-xs text-ink-subtle font-manrope mb-4">
-              Current: <span className="font-bold text-accent-bold">{user?.mode}</span>
-            </p>
-            <p className="text-sm text-ink-muted font-manrope leading-relaxed">
-              To change your coach mode, visit the <a href="/coach" className="text-accent font-bold">AI Coach</a> page
-              and select a different mode. Direct Mode requires an activation reason.
-            </p>
-            {user?.mode === "direct" && user?.direct_mode_reason && (
-              <div className="mt-4 bg-danger-soft border border-danger/25 rounded-xl p-3">
-                <p className="text-xs font-bold text-danger font-chivo mb-1">Your Direct Mode reason:</p>
-                <p className="text-sm text-danger font-manrope">"{user.direct_mode_reason}"</p>
-              </div>
-            )}
-          </div>
-        )}
-        {/* Danger Zone tab */}
-        {activeTab === "danger" && (
-          <div className="bg-surface-raised rounded-2xl border border-danger/25 p-5">
-            <h3 className="font-bold font-chivo text-danger mb-1">Danger Zone</h3>
-            <p className="text-sm text-ink-muted font-manrope leading-relaxed mb-4">
-              Permanently delete your account and all associated data (habits, check-ins, moods, achievements, insights). 
-              <strong className="block mt-1">This action cannot be undone.</strong>
-            </p>
-            
-            <div className="space-y-4 pt-4 border-t border-danger/25">
-              <div>
-                <label className="block text-xs font-bold text-ink font-manrope mb-2">
-                  Confirm Password to Delete Account:
-                </label>
+            <div className="rounded-2xl border border-line bg-surface-raised p-5">
+              <h3 className="mb-1 font-chivo font-bold text-ink">AI insights</h3>
+              <p className="mb-4 text-sm leading-relaxed text-ink-muted">
+                FORGE talks to Azure with a credential held on the server — there's
+                no key for you to manage.
+              </p>
+              <button
+                type="button"
+                onClick={testApiKey}
+                disabled={saving}
+                className="w-full rounded-xl border border-line py-3 font-chivo text-sm font-bold text-ink transition-transform active:scale-[0.98] disabled:opacity-50"
+              >
+                {saving ? "Checking…" : "Test the connection"}
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-danger/25 bg-surface-raised p-5">
+              <h3 className="mb-1 font-chivo font-bold text-danger">Delete account</h3>
+              <p className="mb-4 text-sm leading-relaxed text-ink-muted">
+                Erases your habits, check-ins, moods, achievements and insights.
+                This can't be undone.
+              </p>
+<label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-ink">Confirm your password</span>
                 <input
                   type="password"
+                  autoComplete="current-password"
                   value={deletePassword}
                   onChange={(e) => setDeletePassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="w-full bg-surface-sunk border border-danger/25 rounded-xl px-4 py-3 text-sm font-manrope focus:outline-none focus:ring-2 focus:ring-danger"
+                  placeholder="Your password"
+                  className="w-full rounded-xl border border-line bg-surface-sunk px-3.5 py-3 text-[15px] text-ink placeholder:text-ink-subtle focus:border-danger focus:outline-none focus:ring-2 focus:ring-danger/30"
                 />
-              </div>
+              </label>
               <button
+                type="button"
                 onClick={() => setConfirmWipe(true)}
                 disabled={!deletePassword || deleting}
-                className="w-full py-3 bg-danger text-white font-chivo font-bold text-sm rounded-xl active:scale-[0.98] transition-all disabled:opacity-50"
+                className="mt-3 w-full rounded-xl bg-danger py-3 font-chivo text-sm font-bold text-white transition-transform active:scale-[0.98] disabled:opacity-50"
               >
-                {deleting ? "Deleting..." : "Permanently Delete Account"}
+                {deleting ? "Deleting…" : "Delete my account"}
               </button>
             </div>
           </div>

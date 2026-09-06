@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { Spark, Chart, Flame, Trophy, Heart, Bell } from "./icons";
 
 // FORGE flame logo — same SVG used in Login.js header
 function ForgeLogo({ size = 10, textSize = "text-2xl" }) {
@@ -24,40 +25,40 @@ function ForgeLogo({ size = 10, textSize = "text-2xl" }) {
 
 const features = [
     {
-        icon: "🧠",
+        Icon: Spark,
         title: "AI That Learns You",
         description:
-            "Forget generic tips. FORGE's AI studies your actual completion patterns — your best days, worst days, and timing — then gives you insight only YOUR data can unlock.",
+            "FORGE reads your own completion history — which days work, which don't, and when — and tells you what it actually shows.",
     },
     {
-        icon: "📊",
+        Icon: Chart,
         title: "Pattern Intelligence",
         description:
-            "See exactly which days you dominate and which ones you slip. Heat maps, day-of-week breakdowns, and time-of-day patterns surface the truth about your habits.",
+            "Heat maps, day-of-week breakdowns and time-of-day patterns, so you can see when you follow through and when you don't.",
     },
     {
-        icon: "🔥",
+        Icon: Flame,
         title: "Streak & Momentum",
         description:
-            "Points, levels, and streaks keep complacency at bay. FORGE turns consistency into a game you actually want to win — with daily check-ins that take under 10 seconds.",
+            "Points, levels and streaks give the small days something to add up to. Checking in takes about ten seconds.",
     },
     {
-        icon: "🎯",
+        Icon: Trophy,
         title: "Priority System",
         description:
-            "Not all habits are equal. Star-rank your habits by impact so your AI coach weights its advice around what truly matters to your goals — not just frequency.",
+            "Not every habit matters equally. Weight the important ones higher and the coach focuses its advice there.",
     },
     {
-        icon: "📅",
+        Icon: Bell,
         title: "Daily Reminders",
         description:
-            "Push and email reminders at 8 PM — only for habits you haven't completed. No spam. Just a clean nudge for exactly what's left undone today.",
+            "Reminders at the times you choose, on the days you choose — and only for what's still outstanding.",
     },
     {
-        icon: "⚡",
+        Icon: Flame,
         title: "Three Coach Modes",
         description:
-            "Supportive, Strategic, or Direct — choose how hard your coach pushes you. Switch modes anytime as your relationship with discipline evolves.",
+            "Supportive, Strategic or Direct. Pick how the coach talks to you, and change it whenever you like.",
     },
 ];
 
@@ -161,7 +162,7 @@ export default function Landing({ onGetStarted }) {
                             onClick={() => handleCTA(true)}
                             className="px-8 py-4 bg-accent text-white font-chivo font-bold text-base tracking-wide rounded-2xl shadow-lg shadow-orange-300/40 hover:shadow-xl hover:shadow-orange-300/50 active:scale-95 transition-all"
                         >
-                            Start Free — No Card Needed 🔥
+                            Start free
                         </button>
                         <button
                             onClick={() => handleCTA(false)}
@@ -203,7 +204,7 @@ export default function Landing({ onGetStarted }) {
                             <div className="text-xs text-ink-subtle font-chivost">Today — March 5</div>
                             <div className="flex gap-2">
                                 <div className="flex-1 bg-surface-raised rounded-xl border border-line p-3">
-                                    <div className="text-2xl font-black text-ink font-chivo">12🔥</div>
+                                    <div className="font-chivo text-2xl font-black text-ink">12</div>
                                     <div className="text-xs text-ink-subtle mt-0.5">Day streak</div>
                                 </div>
                                 <div className="flex-1 bg-surface-raised rounded-xl border border-line p-3">
@@ -285,7 +286,7 @@ export default function Landing({ onGetStarted }) {
                                 className="group bg-surface-raised rounded-2xl border border-line p-6 hover:border-accent/25 hover:shadow-lg hover:shadow-orange-50 transition-all"
                             >
                                 <div className="w-12 h-12 bg-accent-soft rounded-xl flex items-center justify-center text-2xl mb-4 group-hover:bg-accent-soft transition-colors">
-                                    {f.icon}
+                                    <f.Icon className="h-6 w-6 text-accent" />
                                 </div>
                                 <h3 className="font-bold font-chivo text-ink text-base mb-2">{f.title}</h3>
                                 <p className="text-sm text-ink-muted font-manrope leading-relaxed">{f.description}</p>
@@ -389,7 +390,7 @@ export default function Landing({ onGetStarted }) {
                         onClick={() => handleCTA(true)}
                         className="px-10 py-4 bg-accent text-white font-chivo font-bold text-base tracking-wide rounded-2xl shadow-xl shadow-orange-500/30 hover:shadow-orange-500/50 active:scale-95 transition-all"
                     >
-                        Start Building — It's Free 🔥
+                        Start building
                     </button>
                 </div>
             </section>

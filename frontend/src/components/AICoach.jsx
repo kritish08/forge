@@ -79,7 +79,7 @@ export default function AICoach() {
       setLatestInsight(res.data);
       setInsights((prev) => [res.data, ...prev]);
       setReflection("");
-      toast.success("Insight generated!");
+      toast.success("Insight ready");
     } catch {
       // Was "Check your API key in Settings." — there is no API key field in
       // Settings; FORGE authenticates to Azure with one server-side credential.
@@ -192,7 +192,7 @@ export default function AICoach() {
                 Analyzing your data...
               </span>
             ) : (
-              "⚡ Generate AI Insight"
+              "Generate insight"
             )}
           </button>
         </div>
