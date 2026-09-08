@@ -90,13 +90,37 @@ DOMAIN_NAME=forge.zerp.me
 
 With everything configured, you can build the images directly on the VPS and start the containers.
 ```bash
-docker-compose up -d --build
+docker compose -f compose.yaml up -d --build
 ```
+
+> **The frontend must be rebuilt, and must be built through compose.**
+> The API host is compiled into the JavaScript bundle at build time — it cannot be
+> supplied at runtime. `compose.yaml` passes it as a build arg derived from
+> `DOMAIN_NAME`, so building through compose is what makes it correct.
+>
+> A bare `docker build` on `frontend/` with no `--build-arg VITE_BACKEND_URL=...`
+> now fails on purpose. So does a build where the value is set but never reaches
+> the bundle. Both are checked, because the alternative already happened: a build
+> compiled without it shipped to production, every request resolved to
+> `/undefined/api/...`, hit the SPA fallback, returned HTML with a `200`, and no
+> one could sign in. The build succeeded silently and the failure only showed up
+> in the browser.
 
 ### Verification
 Check the container status to ensure everything is running and not constantly restarting:
 ```bash
-docker-compose ps
+docker compose ps
+```
+
+Then confirm the shipped bundle actually points at your API — this is the check
+that would have caught the outage above:
+```bash
+# should print your API host, and nothing else
+docker run --rm --entrypoint sh forge-frontend -c \
+  'grep -rho "https://api-[a-z0-9.-]*" /usr/share/nginx/html/static/js | sort -u'
+
+# should return 404, not the app shell
+curl -s -o /dev/null -w "%{http_code}\n" https://<your-domain>/undefined/api/auth/refresh
 ```
 View the logs of a specific container (e.g., to ensure the backup cron started correctly):
 ```bash
