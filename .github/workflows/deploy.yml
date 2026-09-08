@@ -1,0 +1,185 @@
+name: Deploy
+
+# Manual on purpose. Auto-deploying every push to main is not what you want for a
+# single-VPS setup with a destructive migration in the sequence — you want to
+# choose the moment. Flip on the `push` trigger below once you trust it.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "What to do"
+        type: choice
+        default: verify-only
+        options:
+          - verify-only          # run the post-deploy checks against live, change nothing
+          - deploy               # pull, rebuild, restart
+      migration:
+        description: "Token-expiry migration (deletes expired/legacy rows)"
+        type: choice
+        default: skip
+        options:
+          - skip
+          - dry-run              # report counts, write nothing
+          - apply                # actually migrate
+  # push:
+  #   branches: [main]
+
+concurrency:
+  group: deploy-production       # never two deploys at once
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    environment: production      # add required reviewers here to gate it
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Pre-flight: what is live right now? ─────────────────────────────────
+      - name: Record the current live state
+        id: before
+        env:
+          APP: ${{ vars.APP_URL }}
+        run: |
+          set -uo pipefail
+          echo "### Before" >> "$GITHUB_STEP_SUMMARY"
+          bundle=$(curl -sS -m 20 "$APP/" | grep -oE 'static/js/[^"]+\.js' | head -1 || true)
+          echo "- bundle: \`${bundle:-unknown}\`" >> "$GITHUB_STEP_SUMMARY"
+          code=$(curl -sS -m 20 -o /dev/null -w '%{http_code}' "$APP/undefined/api/auth/refresh" || echo 000)
+          echo "- \`/undefined/api/auth/refresh\` -> \`$code\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" = "200" ]; then
+            echo "- :warning: **the live frontend has no API host — sign-in is broken**" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── Reach the server ────────────────────────────────────────────────────
+      - name: Set up SSH
+        if: inputs.mode == 'deploy'
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          CF_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY"  || { echo "::error::secret DEPLOY_SSH_KEY is not set";  exit 1; }
+          test -n "$HOST" || { echo "::error::secret DEPLOY_HOST is not set";     exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          {
+            echo "Host target"
+            echo "  HostName $HOST"
+            echo "  User ${{ secrets.DEPLOY_USER || 'root' }}"
+            echo "  IdentityFile ~/.ssh/id_deploy"
+            echo "  StrictHostKeyChecking accept-new"
+          } > ~/.ssh/config
+          # Hosts behind a Cloudflare tunnel need a service token, not a public IP.
+          if [ -n "${CF_ID:-}" ] && [ -n "${CF_SECRET:-}" ]; then
+            curl -fsSL -o cloudflared \
+              https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+            chmod +x cloudflared && sudo mv cloudflared /usr/local/bin/
+            echo "  ProxyCommand cloudflared access ssh --hostname %h" >> ~/.ssh/config
+            echo "CF_ACCESS_CLIENT_ID=$CF_ID"         >> "$GITHUB_ENV"
+            echo "CF_ACCESS_CLIENT_SECRET=$CF_SECRET" >> "$GITHUB_ENV"
+            echo "using cloudflared tunnel"
+          fi
+          ssh -o BatchMode=yes target 'echo "ssh ok: $(hostname)"'
+
+      # ── Deploy ──────────────────────────────────────────────────────────────
+      - name: Pull, rebuild, restart
+        if: inputs.mode == 'deploy'
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_PATH" || { echo "::error::secret DEPLOY_PATH is not set"; exit 1; }
+          ssh -o BatchMode=yes target bash -euo pipefail <<REMOTE
+            cd "$DEPLOY_PATH"
+            git fetch origin main
+            git reset --hard origin/main
+            echo "now at: \$(git rev-parse --short HEAD) \$(git log -1 --format=%s)"
+
+            # The frontend MUST be rebuilt: the API host is compiled into the
+            # bundle. compose.yaml supplies it as a build arg from DOMAIN_NAME,
+            # and the Dockerfile refuses to produce a bundle without it.
+            docker compose -f compose.yaml build --pull
+            docker compose -f compose.yaml up -d
+            docker compose -f compose.yaml ps
+          REMOTE
+
+      - name: Verify the shipped bundle on the server
+        if: inputs.mode == 'deploy'
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes target bash -euo pipefail <<'REMOTE'
+            img=$(docker compose -f compose.yaml images -q frontend 2>/dev/null | head -1)
+            img=${img:-forge-frontend}
+            hosts=$(docker run --rm --entrypoint sh "$img" -c \
+              'grep -rho "https://api-[a-z0-9.-]*" /usr/share/nginx/html/static/js | sort -u' || true)
+            echo "bundle targets: ${hosts:-NONE}"
+            test -n "$hosts" || { echo "::error::shipped bundle contains no API host"; exit 1; }
+          REMOTE
+
+      # ── Migration, only if explicitly asked for ─────────────────────────────
+      - name: Token-expiry migration
+        if: inputs.mode == 'deploy' && inputs.migration != 'skip'
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          MODE: ${{ inputs.migration }}
+        run: |
+          set -euo pipefail
+          FLAG=""
+          [ "$MODE" = "apply" ] && FLAG="--apply"
+          ssh -o BatchMode=yes target bash -euo pipefail <<REMOTE | tee migration.log
+            cd "$DEPLOY_PATH"
+            docker compose -f compose.yaml exec -T backend python migrate_token_expiry.py $FLAG
+          REMOTE
+          { echo "### Migration (\`$MODE\`)"; echo '```'; cat migration.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # ── The check that would have caught the outage ─────────────────────────
+      - name: Post-deploy verification
+        env:
+          APP: ${{ vars.APP_URL }}
+          API: ${{ vars.API_URL }}
+        run: |
+          set -uo pipefail
+          fail=0
+          echo "### After" >> "$GITHUB_STEP_SUMMARY"
+
+          # Give the containers a moment to come up.
+          for i in $(seq 1 20); do
+            curl -sSf -m 10 -o /dev/null "$APP/" && break
+            sleep 3
+          done
+
+          bundle=$(curl -sS -m 20 "$APP/" | grep -oE 'static/js/[^"]+\.js' | head -1 || true)
+          echo "- bundle: \`${bundle:-unknown}\`" >> "$GITHUB_STEP_SUMMARY"
+
+          # THE regression check. A frontend with no API host resolves its calls
+          # to /undefined/api/... , which the SPA fallback answers with the app
+          # shell and a 200. That is what shipped on 2026-09-08.
+          code=$(curl -sS -m 20 -o /dev/null -w '%{http_code}' "$APP/undefined/api/auth/refresh" || echo 000)
+          if [ "$code" = "404" ]; then
+            echo "- :white_check_mark: \`/undefined/api/...\` -> 404" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- :x: \`/undefined/api/...\` -> \`$code\` (expected 404 — the bundle has no API host)" >> "$GITHUB_STEP_SUMMARY"
+            fail=1
+          fi
+
+          # The real backend must answer as itself, not as the SPA.
+          ct=$(curl -sS -m 20 -o /dev/null -w '%{content_type}' -X POST "$API/api/auth/refresh" || echo none)
+          case "$ct" in
+            application/json*) echo "- :white_check_mark: API returns JSON" >> "$GITHUB_STEP_SUMMARY" ;;
+            *) echo "- :x: API returned \`$ct\`, expected JSON" >> "$GITHUB_STEP_SUMMARY"; fail=1 ;;
+          esac
+
+          # index.html must never be cached, or a deploy strands old bundle hashes.
+          cc=$(curl -sSI -m 20 "$APP/" | tr -d '\r' | grep -i '^cache-control' || true)
+          case "$cc" in
+            *no-store*|*no-cache*) echo "- :white_check_mark: shell not cached" >> "$GITHUB_STEP_SUMMARY" ;;
+            *) echo "- :warning: shell cache-control: \`${cc:-absent}\`" >> "$GITHUB_STEP_SUMMARY" ;;
+          esac
+
+          exit $fail
