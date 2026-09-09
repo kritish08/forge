@@ -10,9 +10,17 @@ load_dotenv(ROOT_DIR / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-AZURE_ENDPOINT = os.environ.get("AZURE_ENDPOINT", "https://kyrex-hub-resource.openai.azure.com/openai/v1/")
-AZURE_MODEL = os.environ.get("AZURE_MODEL", "gpt-5.2")
-AZURE_API_KEY = os.environ.get("AZURE_API_KEY", "")
+# ── AI provider ────────────────────────────────────────────────────────────────
+# FORGE talks to OpenAI directly. Every user brings their own key (stored
+# encrypted, per account); OPENAI_API_KEY is an optional server-wide fallback for
+# accounts that have not added one. With neither, insights come from templates.
+OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+
+# Fernet key for per-user API keys at rest. Without it the app still runs, but
+# saving a personal key is refused rather than silently stored in the clear.
+ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", "")
 
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "")
 ALGORITHM = "HS256"

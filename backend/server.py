@@ -8,14 +8,14 @@ from typing import Optional
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
-from config import (limiter, logger, AZURE_ENDPOINT, AZURE_MODEL, AZURE_API_KEY, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY_B64, SMTP_HOST, SMTP_USER, APP_URL, CORS_ORIGINS)
+from config import (limiter, logger, OPENAI_MODEL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY_B64, SMTP_HOST, SMTP_USER, APP_URL, CORS_ORIGINS)
 from db import client, db, _ensure_indexes
-from models import RegisterRequest, LoginRequest, PasswordResetRequest, PasswordReset, HabitCreate, HabitUpdate, CompletionCreate, MoodCreate, InsightRequest, UserSettingsUpdate, PushSubscribeRequest, DeleteAccountRequest
-from security import create_token, decode_token, get_current_user, pwd_context, hash_token
+from models import RegisterRequest, LoginRequest, PasswordResetRequest, PasswordReset, HabitCreate, HabitUpdate, CompletionCreate, MoodCreate, InsightRequest, UserSettingsUpdate, AIKeyRequest, PushSubscribeRequest, DeleteAccountRequest
+from security import create_token, decode_token, get_current_user, pwd_context, hash_token, encrypt_value, encryption_available
 from logic import (get_level_progress, get_user_today, is_habit_scheduled_today, compute_global_streak, aggregate_consistency, compute_dow_patterns, compute_time_patterns, validate_completion_date)
 from achievements import check_and_award_achievements, ACHIEVEMENT_CATALOG
 from notifications import scheduler, send_email, send_welcome_email, send_push, daily_reminder_job, weekly_summary_job
-from ai import generate_ai_insight
+from ai import generate_ai_insight, resolve_ai_credentials, openai_client
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -46,6 +46,30 @@ async def debug_preflight(request: Request, call_next):
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ── User serialization ──────────────────────────────────────────────────────────
+# Everything the client is allowed to see about an account, in one place. Each
+# route used to build this dict inline with its own exclusion list, which is how
+# a newly added secret field ends up in an API response: add it to the store and
+# five separate comprehensions start returning it. Only this function reaches the
+# client, and it drops secrets by name.
+_PRIVATE_USER_FIELDS = ("password_hash", "openai_api_key_enc")
+
+
+def public_user(user: dict) -> dict:
+    safe = {k: v for k, v in user.items() if k not in _PRIVATE_USER_FIELDS}
+    api_key, model, source = resolve_ai_credentials(user)
+    # has_api_key: this account has its own key on file.
+    # ai_configured: insights will reach a real model at all (own key or the
+    # server fallback). The two differ, and the UI needs both to say why.
+    safe["has_api_key"] = source == "user"
+    safe["ai_configured"] = bool(api_key)
+    safe["ai_key_source"] = source
+    safe["ai_model"] = model
+    # A masked tail so the UI can show which key is saved without ever holding it.
+    safe["ai_key_hint"] = f"…{api_key[-4:]}" if source == "user" and api_key else ""
+    return safe
+
 
 # ── Auth Routes ─────────────────────────────────────────────────────────────────
 @api_router.post("/auth/register")
@@ -83,9 +107,7 @@ async def register(data: RegisterRequest, request: Request, response: Response, 
                         samesite="none", path="/", max_age=30 * 24 * 60 * 60)
     background_tasks.add_task(send_welcome_email, email, data.name)
 
-    safe = {k: v for k, v in user.items() if k not in ["password_hash"]}
-    safe["ai_configured"] = bool(AZURE_API_KEY)
-    return {"user": safe, "access_token": access_token}
+    return {"user": public_user(user), "access_token": access_token}
 
 
 @api_router.post("/auth/login")
@@ -105,9 +127,7 @@ async def login(data: LoginRequest, request: Request, response: Response):
     response.set_cookie("refresh_token", refresh_token, httponly=True, secure=True,
                         samesite="none", path="/", max_age=30 * 24 * 60 * 60)
 
-    safe = {k: v for k, v in user.items() if k not in ["password_hash"]}
-    safe["has_api_key"] = bool(AZURE_API_KEY)
-    return {"user": safe, "access_token": access_token}
+    return {"user": public_user(user), "access_token": access_token}
 
 
 @api_router.post("/auth/refresh")
@@ -139,16 +159,12 @@ async def refresh(request: Request, response: Response):
     response.set_cookie("refresh_token", new_refresh, httponly=True, secure=True,
                         samesite="none", path="/", max_age=30 * 24 * 60 * 60)
 
-    safe = {k: v for k, v in user.items() if k not in ["password_hash"]}
-    safe["has_api_key"] = bool(AZURE_API_KEY)
-    return {"user": safe, "access_token": new_access}
+    return {"user": public_user(user), "access_token": new_access}
 
 
 @api_router.get("/auth/me")
 async def get_me(current_user=Depends(get_current_user)):
-    safe = {k: v for k, v in current_user.items() if k not in ["password_hash"]}
-    safe["has_api_key"] = bool(AZURE_API_KEY)
-    return safe
+    return public_user(current_user)
 
 
 @api_router.post("/auth/logout")
@@ -644,9 +660,7 @@ async def update_settings(data: UserSettingsUpdate, current_user=Depends(get_cur
     if upd:
         await db.users.update_one({"user_id": current_user["user_id"]}, {"$set": upd})
     updated = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
-    safe = {k: v for k, v in updated.items() if k not in ["password_hash"]}
-    safe["has_api_key"] = bool(AZURE_API_KEY)
-    return safe
+    return public_user(updated)
 
 
 @api_router.delete("/user/account")
@@ -676,50 +690,116 @@ async def delete_account(data: DeleteAccountRequest, current_user=Depends(get_cu
         
     return {"message": "Account successfully deleted"}
 
-@api_router.post("/user/test-ai-key")
-async def test_ai_key(current_user=Depends(get_current_user)):
-    """Ping the server's Azure deployment to confirm AI insights will work.
+# ── AI key (bring your own) ─────────────────────────────────────────────────────
+# Each account holds its own OpenAI key, encrypted at rest. The stored key is
+# never returned by any route — the client only ever sees a masked tail.
 
-    NOTE: despite the name, there is no per-user key — FORGE authenticates to
-    Azure with one server-side credential. The bring-your-own-key path was
-    removed from the settings UI; what remained was a settings write for fields
-    the model does not declare, which pydantic dropped, so the app reported
-    "API key saved securely!" while saving nothing."""
-    azure_key = AZURE_API_KEY
+def _openai_error_message(e: Exception) -> str:
+    """Turn an OpenAI failure into something a user can act on. The exception text
+    can quote the request, so only the mapped message is ever sent onward."""
+    text = str(e).lower()
+    if "401" in text or "invalid_api_key" in text or "incorrect api key" in text or "authentication" in text:
+        return "OpenAI rejected that key. Check you copied all of it, and that it hasn't been revoked."
+    if "403" in text or "permission" in text:
+        return "That key is valid but not allowed to use this model. Pick another model, or use a key with full access."
+    if "404" in text or "does not exist" in text or "not found" in text:
+        return "That model isn't available to your key. Choose a different one."
+    if "429" in text or "quota" in text or "rate limit" in text:
+        return "OpenAI is rate-limiting this key, or the account is out of credit. Check your billing and try again."
+    if "timeout" in text or "timed out" in text:
+        return "OpenAI didn't respond in time. Try again in a moment."
+    if "connection" in text or "network" in text:
+        return "Couldn't reach OpenAI. Check your connection and try again."
+    return "Couldn't reach OpenAI with that key. Try again in a moment."
 
-    if not azure_key or azure_key.strip() == "":
-        raise HTTPException(status_code=400, detail="No API key configured on the server")
-    
+
+async def _list_chat_models(api_key: str) -> list:
+    """Chat-capable models this key can actually use, newest-looking first. Doubles
+    as key validation: /v1/models is a cheap authenticated call that costs nothing."""
+    client = openai_client(api_key)
+    listing = await client.models.list()
+    ids = [m.id for m in listing.data
+           if m.id.startswith(("gpt-", "o1", "o3", "o4", "chatgpt-"))
+           and not any(x in m.id for x in ("audio", "realtime", "transcribe", "tts", "image", "search", "instruct"))]
+    return sorted(set(ids), reverse=True)
+
+
+@api_router.get("/user/ai-models")
+async def list_ai_models(current_user=Depends(get_current_user)):
+    """The models available to whichever key this account runs on."""
+    api_key, model, source = resolve_ai_credentials(current_user)
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Add an OpenAI key first")
     try:
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(
-            base_url=AZURE_ENDPOINT,
-            api_key=azure_key
-        )
-        
-        # Simple test call
-        resp = await client.chat.completions.create(
-            model=AZURE_MODEL,
-            messages=[{"role": "user", "content": "Say 'FORGE test successful' in 3 words."}],
-            temperature=0.3
-        )
-        
-        result = resp.choices[0].message.content
-        return {
-            "success": True,
-            "message": "API key is working correctly!",
-            "test_response": result
-        }
+        return {"models": await _list_chat_models(api_key), "current": model, "source": source}
     except Exception as e:
-        error_msg = str(e)
-        if "401" in error_msg or "authentication" in error_msg.lower():
-            return {"success": False, "message": "Authentication failed. Check your API key."}
-        elif "404" in error_msg or "not found" in error_msg.lower():
-            return {"success": False, "message": "Model or endpoint not found. Check your configuration."}
-        elif "quota" in error_msg.lower() or "rate" in error_msg.lower():
-            return {"success": False, "message": "Rate limit or quota exceeded. Try again later."}
-        else:
-            return {"success": False, "message": f"Test failed: {error_msg[:100]}"}
+        logger.error("Model listing failed (key=%s): %s", source, e)
+        raise HTTPException(status_code=502, detail=_openai_error_message(e))
+
+
+@api_router.put("/user/ai-key")
+@limiter.limit("20/hour")
+async def save_ai_key(data: AIKeyRequest, request: Request, current_user=Depends(get_current_user)):
+    """Validate a key against OpenAI, then store it encrypted. A key that OpenAI
+    won't accept is never written — the old flow reported success regardless."""
+    if not encryption_available():
+        raise HTTPException(status_code=503,
+                            detail="This server can't store keys securely right now. Contact the administrator.")
+
+    api_key = data.api_key.strip()
+    try:
+        models = await _list_chat_models(api_key)
+    except Exception as e:
+        logger.warning("Rejected an AI key for %s: %s", current_user["user_id"], type(e).__name__)
+        raise HTTPException(status_code=400, detail=_openai_error_message(e))
+
+    # Keep the requested model only if the key can actually use it, so a saved
+    # setting can never point at a model that 404s on every insight.
+    model = data.model or current_user.get("ai_model") or OPENAI_MODEL
+    if models and model not in models:
+        model = OPENAI_MODEL if OPENAI_MODEL in models else models[0]
+
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {"$set": {"openai_api_key_enc": encrypt_value(api_key), "ai_model": model}})
+    updated = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
+    return {"success": True, "message": "Key saved. Your insights now run on your own OpenAI account.",
+            "models": models, "user": public_user(updated)}
+
+
+@api_router.delete("/user/ai-key")
+async def delete_ai_key(current_user=Depends(get_current_user)):
+    await db.users.update_one({"user_id": current_user["user_id"]},
+                              {"$unset": {"openai_api_key_enc": ""}})
+    updated = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
+    return {"success": True, "message": "Key removed.", "user": public_user(updated)}
+
+
+@api_router.post("/user/test-ai-key")
+@limiter.limit("20/hour")
+async def test_ai_key(request: Request, current_user=Depends(get_current_user)):
+    """Make one real completion with whatever key this account runs on, so the
+    result reflects the path an actual insight takes — not just that a key parses."""
+    api_key, model, source = resolve_ai_credentials(current_user)
+    if not api_key:
+        raise HTTPException(status_code=400,
+                            detail="No OpenAI key on this account. Add one above to enable AI insights.")
+    try:
+        client = openai_client(api_key)
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "Reply with exactly: FORGE connection OK"}],
+            temperature=0,
+            max_tokens=20)
+        whose = "your key" if source == "user" else "the server's key"
+        return {"success": True, "source": source, "model": model,
+                "message": f"Working — {model} responded using {whose}.",
+                "test_response": resp.choices[0].message.content}
+    except Exception as e:
+        logger.error("AI key test failed (model=%s, key=%s): %s", model, source, e)
+        return {"success": False, "source": source, "model": model,
+                "message": _openai_error_message(e)}
+
 
 app.include_router(api_router)
 

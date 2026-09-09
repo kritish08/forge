@@ -49,7 +49,7 @@ DB_NAME=ForgeCluster
 
 # Security  (generate each with: openssl rand -hex 32)
 JWT_SECRET_KEY=<your-jwt-secret>
-ENCRYPTION_KEY=<your-fernet-encryption-key>
+ENCRYPTION_KEY=<any 32-byte secret; encrypts users' own OpenAI keys at rest>
 
 # Email Notifications (Optional)
 SMTP_HOST=smtp.zeptomail.in
@@ -62,10 +62,12 @@ SMTP_FROM="FORGE <noreply@forge.zerp.me>"
 VAPID_PRIVATE_KEY=<your-vapid-private-key>
 VAPID_PUBLIC_KEY=<your-vapid-public-key>
 
-# AI Integration (Optional defaults)
-AZURE_ENDPOINT=https://kyrex-hub-resource.openai.azure.com/openai/v1/
-AZURE_MODEL=gpt-5.2
-AZURE_API_KEY=<your-azure-openai-api-key>
+# AI — bring-your-own-key. Each user adds their own OpenAI key in Settings; it
+# is validated against OpenAI, then stored encrypted under ENCRYPTION_KEY.
+# All three of these are optional.
+OPENAI_API_KEY=            # shared fallback for accounts with no key of their own
+OPENAI_MODEL=gpt-4o-mini   # default model a newly saved key starts on
+OPENAI_BASE_URL=https://api.openai.com/v1
 
 # S3 Automated Backups configuration
 S3_BUCKET=s3://black-instance-bucket/forge

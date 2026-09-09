@@ -138,12 +138,15 @@ export default function AICoach() {
               </p>
             </div>
           )}
-          {!user?.has_api_key && (
+          {!user?.ai_configured && (
             <div className="mt-3 rounded-xl border border-warning/25 bg-warning-soft p-3">
-              <p className="text-xs text-ink-muted">
+              <p className="text-xs leading-relaxed text-ink-muted">
                 <span className="font-semibold text-warning">Using built-in insights.</span>{" "}
-                The server has no AI credential configured, so these come from templates
-                rather than a model.
+                These come from templates, not a model. Add your OpenAI key in{" "}
+                <a href="/settings" className="font-semibold text-accent-bold underline underline-offset-2">
+                  Settings
+                </a>{" "}
+                to get insights written from your own data.
               </p>
             </div>
           )}

@@ -1,7 +1,33 @@
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from config import AZURE_ENDPOINT, AZURE_MODEL, AZURE_API_KEY, logger
+from config import OPENAI_BASE_URL, OPENAI_MODEL, OPENAI_API_KEY, logger
+from security import decrypt_value
 from logic import compute_habit_adherence
+
+# One AI call should never hold an API request open indefinitely, and an insight
+# is a short paragraph — both were unbounded before.
+AI_TIMEOUT_SECONDS = 30.0
+AI_MAX_TOKENS = 500
+
+
+def resolve_ai_credentials(user: dict) -> tuple:
+    """Which key and model this user's insights run on.
+
+    Order: the user's own key, then the optional server-wide key, then neither.
+    Returns (api_key, model, source) where source is "user" | "server" | None.
+    The key is decrypted here and must not be logged or returned to the client."""
+    user_key = decrypt_value(user.get("openai_api_key_enc", ""))
+    model = user.get("ai_model") or OPENAI_MODEL
+    if user_key:
+        return user_key, model, "user"
+    if OPENAI_API_KEY:
+        return OPENAI_API_KEY, model, "server"
+    return None, model, None
+
+
+def openai_client(api_key: str):
+    from openai import AsyncOpenAI
+    return AsyncOpenAI(base_url=OPENAI_BASE_URL, api_key=api_key, timeout=AI_TIMEOUT_SECONDS)
 
 SYSTEM_PROMPT = """You are FORGE's AI habit coach. Analyze user data and give genuine, personalized insights.
 
@@ -121,23 +147,26 @@ USER REFLECTION: {reflection or 'No reflection provided'}
 DIRECT MODE REASON: {user.get('direct_mode_reason', 'N/A') if mode == 'direct' else 'N/A'}
 Generate personalized insight:"""
 
-    if AZURE_API_KEY:
+    api_key, model, source = resolve_ai_credentials(user)
+    if api_key:
         try:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(
-                base_url=AZURE_ENDPOINT,
-                api_key=AZURE_API_KEY
-            )
+            client = openai_client(api_key)
             response = await client.chat.completions.create(
-                model=AZURE_MODEL,
+                model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content}
                 ],
-                temperature=0.7
+                temperature=0.7,
+                max_tokens=AI_MAX_TOKENS
             )
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            if content and content.strip():
+                return content
+            logger.warning("OpenAI returned an empty insight (model=%s, key=%s)", model, source)
         except Exception as e:
-            logger.error("Azure AI error: %s", e)
+            # %s on the exception, never the key — OpenAI errors quote the request
+            # but not the credential, and the key is not in scope of this string.
+            logger.error("OpenAI insight failed (model=%s, key=%s): %s", model, source, e)
 
     return generate_template_insight(context, mode)

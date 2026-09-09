@@ -13,11 +13,10 @@ const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export default function Settings() {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, setUser, logout, refreshUser } = useAuth();
   const [habits, setHabits] = useState([]);
   const [editingHabit, setEditingHabit] = useState(null);
   const [newHabit, setNewHabit] = useState({ name: "", priority: 1, context: "", frequency_type: "daily", frequency_days: [], frequency_target: 7 });
-  const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [activeTab, setActiveTab] = useState("habits");
@@ -25,6 +24,10 @@ export default function Settings() {
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [vapidConfigured, setVapidConfigured] = useState(null); // null=loading, true/false
   const [smtpConfigured, setSmtpConfigured] = useState(null); // null=loading, true/false
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [models, setModels] = useState([]);
+  const [confirmRemoveKey, setConfirmRemoveKey] = useState(false);
 
   useEffect(() => {
     api.get("/habits").then((r) => setHabits(r.data)).catch(console.error);
@@ -48,6 +51,13 @@ export default function Settings() {
       setSmtpConfigured(false);
     });
   }, []);
+
+  // Populate the model dropdown for an account that has a key to list against. A
+  // failure here is silent: the card still works, just without the list.
+  useEffect(() => {
+    if (!user?.ai_configured) return;
+    api.get("/user/ai-models").then((r) => setModels(r.data.models || [])).catch(() => {});
+  }, [user?.ai_configured]);
 
   const addHabit = async () => {
     if (!newHabit.name.trim()) return;
@@ -97,27 +107,61 @@ export default function Settings() {
     }
   };
 
-  // NOTE: saveApiKey/removeApiKey used to live here. They PUT `azure_api_key`
-  // and `ai_provider` to /user/settings — fields UserSettingsUpdate does not
-  // declare, so pydantic dropped them, the endpoint returned 200, and the UI
-  // reported "API key saved securely!" while storing nothing. The AI tab that
-  // called them was replaced by the server-authenticated status panel, so this
-  // was unreachable dead code on top of being broken.
+  // Bring your own key. The key is sent once, validated against OpenAI, and
+  // stored encrypted — it is never sent back, so the field always starts empty
+  // and the saved key is shown only as its last four characters.
+  const saveApiKey = async () => {
+    const key = apiKeyInput.trim();
+    if (!key) return;
+    setKeyBusy(true);
+    try {
+      const res = await api.put("/user/ai-key", { api_key: key });
+      setUser(res.data.user);
+      setModels(res.data.models || []);
+      setApiKeyInput("");
+      toast.success(res.data.message);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Couldn't save that key. Try again.");
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
+  const removeApiKey = async () => {
+    setKeyBusy(true);
+    try {
+      const res = await api.delete("/user/ai-key");
+      setUser(res.data.user);
+      setModels([]);
+      toast.success("Key removed. Insights fall back to built-in templates.");
+    } catch {
+      toast.error("Couldn't remove the key. Try again.");
+    } finally {
+      setKeyBusy(false);
+      setConfirmRemoveKey(false);
+    }
+  };
+
+  const changeModel = async (model) => {
+    try {
+      const res = await api.put("/user/settings", { ai_model: model });
+      setUser(res.data);
+      toast.success(`Insights now use ${model}.`);
+    } catch {
+      toast.error("Couldn't change the model. Try again.");
+    }
+  };
 
   const testApiKey = async () => {
-    setSaving(true);
+    setKeyBusy(true);
     try {
       const res = await api.post("/user/test-ai-key");
-      if (res.data.success) {
-        toast.success(res.data.message + " ✅");
-      } else {
-        toast.error(res.data.message);
-      }
+      if (res.data.success) toast.success(res.data.message);
+      else toast.error(res.data.message);
     } catch (err) {
-      const msg = err.response?.data?.detail || "Failed to test API key";
-      toast.error(msg);
+      toast.error(err.response?.data?.detail || "Couldn't reach OpenAI.");
     } finally {
-      setSaving(false);
+      setKeyBusy(false);
     }
   };
 
@@ -675,18 +719,102 @@ export default function Settings() {
 
             <div className="rounded-2xl border border-line bg-surface-raised p-5">
               <h3 className="mb-1 font-chivo font-bold text-ink">AI insights</h3>
-              <p className="mb-4 text-sm leading-relaxed text-ink-muted">
-                FORGE talks to Azure with a credential held on the server — there's
-                no key for you to manage.
+              <p className="text-sm leading-relaxed text-ink-muted">
+                Coach insights are written by OpenAI using your own API key. FORGE
+                sends your habit data and nothing else; OpenAI bills your account
+                for what you use — a few cents a month at normal use.
               </p>
-              <button
-                type="button"
-                onClick={testApiKey}
-                disabled={saving}
-                className="w-full rounded-xl border border-line py-3 font-chivo text-sm font-bold text-ink transition-transform active:scale-[0.98] disabled:opacity-50"
-              >
-                {saving ? "Checking…" : "Test the connection"}
-              </button>
+
+              {user?.has_api_key ? (
+                <>
+                  <div className="mt-4 flex items-center gap-3 rounded-xl border border-line bg-surface-sunk px-3.5 py-3">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-success" aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-ink">Your key is connected</p>
+                      <p className="text-xs text-ink-subtle">Ends in {user.ai_key_hint}</p>
+                    </div>
+                  </div>
+
+                  <label className="mt-4 block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">Model</span>
+                    {models.length > 0 ? (
+                      <select
+                        value={user.ai_model || ""}
+                        onChange={(e) => changeModel(e.target.value)}
+                        className="w-full rounded-xl border border-line bg-surface-sunk px-3.5 py-3 text-[15px] text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                      >
+                        {models.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    ) : (
+                      <p className="rounded-xl border border-line bg-surface-sunk px-3.5 py-3 text-[15px] text-ink-muted">
+                        {user.ai_model}
+                      </p>
+                    )}
+                    <span className="mt-1.5 block text-xs text-ink-subtle">
+                      Smaller models cost less. Larger ones read your patterns more closely.
+                    </span>
+                  </label>
+
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={testApiKey}
+                      disabled={keyBusy}
+                      className="flex-1 rounded-xl border border-line py-3 font-chivo text-sm font-bold text-ink transition-transform active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {keyBusy ? "Checking…" : "Test the connection"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRemoveKey(true)}
+                      disabled={keyBusy}
+                      className="rounded-xl border border-danger/25 px-4 py-3 font-chivo text-sm font-bold text-danger transition-transform active:scale-[0.98] disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <label className="mt-4 block">
+                    <span className="mb-1.5 block text-sm font-medium text-ink">OpenAI API key</span>
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder="sk-..."
+                      className="w-full rounded-xl border border-line bg-surface-sunk px-3.5 py-3 font-mono text-[15px] text-ink placeholder:text-ink-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    />
+                    <span className="mt-1.5 block text-xs text-ink-subtle">
+                      Create one at{" "}
+                      <a
+                        href="https://platform.openai.com/api-keys"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="font-semibold text-accent-bold underline underline-offset-2"
+                      >
+                        platform.openai.com
+                      </a>
+                      . It's stored encrypted and never shown again.
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={saveApiKey}
+                    disabled={!apiKeyInput.trim() || keyBusy}
+                    className="mt-3 w-full rounded-xl bg-accent py-3 font-chivo text-sm font-bold text-accent-contrast transition-transform active:scale-[0.98] disabled:opacity-40"
+                  >
+                    {keyBusy ? "Checking with OpenAI…" : "Save key"}
+                  </button>
+                  {user?.ai_configured && (
+                    <p className="mt-3 text-xs leading-relaxed text-ink-subtle">
+                      Until you add one, insights run on the server's shared key.
+                    </p>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="rounded-2xl border border-danger/25 bg-surface-raised p-5">
@@ -738,6 +866,17 @@ export default function Settings() {
         title="Delete your account?"
         description="This erases your habits, check-ins, moods, achievements and insights. It cannot be undone."
         confirmLabel="Delete everything"
+      />
+
+      <ConfirmSheet
+        open={confirmRemoveKey}
+        onClose={() => setConfirmRemoveKey(false)}
+        onConfirm={removeApiKey}
+        destructive
+        busy={keyBusy}
+        title="Remove your OpenAI key?"
+        description="Insights go back to built-in templates until you add a key again. Your habits and history are untouched."
+        confirmLabel="Remove key"
       />
     </Screen>
   );

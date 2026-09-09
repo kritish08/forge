@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 class RegisterRequest(BaseModel):
@@ -56,6 +56,8 @@ class UserSettingsUpdate(BaseModel):
     # NOTE: pydantic drops unknown keys silently, so a field missing from this
     # model makes its endpoint a no-op that still returns 200. That is exactly
     # how the old `azure_api_key` write appeared to succeed while saving nothing.
+    # The OpenAI key itself is deliberately NOT here: it needs encrypting before
+    # storage, so it has its own endpoint rather than riding this generic $set.
     mode: Optional[str] = None
     direct_mode_reason: Optional[str] = None
     onboarding_completed: Optional[bool] = None
@@ -66,6 +68,14 @@ class UserSettingsUpdate(BaseModel):
     push_notifications_enabled: Optional[bool] = None
     timezone: Optional[str] = None
     notification_rules: Optional[list] = None
+    # Which OpenAI model this user's insights are generated with. Not a secret.
+    ai_model: Optional[str] = Field(default=None, max_length=100)
+
+class AIKeyRequest(BaseModel):
+    """A user's own OpenAI key. Validated against OpenAI before it is stored, and
+    never echoed back — responses carry only a masked hint."""
+    api_key: str = Field(min_length=20, max_length=300)
+    model: Optional[str] = Field(default=None, max_length=100)
 
 class PushSubscribeRequest(BaseModel):
     subscription: dict

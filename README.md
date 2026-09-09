@@ -32,7 +32,7 @@ FORGE is a data-driven habit tracking application with AI-powered insights, adva
 - **Adaptive tone** - Choose from Supportive, Strategic, or Direct mode
 - **Contextual insights** - AI analyzes YOUR data, not generic advice
 - **Memory system** - Tracks past suggestions and their outcomes
-- **Server-managed AI** - One Azure credential configured on the server, with built-in fallback templates when it is absent
+- **Bring your own key** - Each account adds its own OpenAI key in Settings, stored encrypted; built-in templates cover accounts without one
 
 ### 🎮 Gamification
 - **Level system** with 10 tiers (0 → 9000+ points)
@@ -252,10 +252,15 @@ SMTP_FROM=FORGE <noreply@yourdomain.com>
 VAPID_PRIVATE_KEY=<generate with web-push CLI>
 VAPID_PUBLIC_KEY=<generate with web-push CLI>
 
-# AI (Optional) - one server-side credential, shared by all users
-AZURE_ENDPOINT=https://your-resource.openai.azure.com/openai/v1/
-AZURE_MODEL=gpt-5.2
-AZURE_API_KEY=<your-azure-key>
+# AI — every user brings their own OpenAI key from Settings, stored encrypted
+# under ENCRYPTION_KEY. The three below are optional:
+#   OPENAI_API_KEY  a shared fallback for accounts that haven't added one.
+#                   Leave it empty for pure bring-your-own-key.
+#   OPENAI_MODEL    the default model a new key starts on.
+#   OPENAI_BASE_URL point at an OpenAI-compatible gateway if you use one.
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_BASE_URL=https://api.openai.com/v1
 
 # App
 APP_URL=http://localhost:3000

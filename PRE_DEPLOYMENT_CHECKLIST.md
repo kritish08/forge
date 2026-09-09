@@ -35,18 +35,18 @@
 |-----------|--------|-------|
 | AI Coach Page | ✅ WORKING | Mode switching, reflection input |
 | AI Insight Generation | ✅ WORKING | `/api/ai/insight` endpoint |
-| Azure AI Integration | ✅ WORKING | BYOK support with encryption |
-| **NEW: API Key Validator** | ✅ WORKING | Test button in Settings |
+| OpenAI Integration | ✅ WORKING | Per-user key, encrypted at rest |
+| API Key Validator | ✅ WORKING | Key is checked against OpenAI before it is stored |
 | Fallback Templates | ✅ WORKING | Used when no API key |
 | Memory System | ✅ WORKING | Tracks past insights |
 | Mode Switching | ✅ WORKING | Supportive, Strategic, Direct |
 
 **AI Flow:**
-1. User adds Azure AI key in Settings
-2. **New:** User tests key with "Test Key" button
-3. Key encrypted and stored
-4. AI Coach uses key for insights
-5. Falls back to templates if key fails
+1. User pastes their own OpenAI key in Settings
+2. FORGE lists the models that key can use — a key OpenAI rejects is never stored
+3. Key is encrypted under `ENCRYPTION_KEY` and saved against the account
+4. User picks a model; AI Coach generates insights on their key and their bill
+5. Falls back to the server key if one is set, then to templates
 
 ---
 
@@ -126,14 +126,14 @@ All collections verified and in use:
 - ✅ `MONGO_URL` - Database connection
 - ✅ `DB_NAME` - Database name
 - ✅ `JWT_SECRET_KEY` - Auth security
-- ✅ `ENCRYPTION_KEY` - Key encryption
+- ✅ `ENCRYPTION_KEY` - Encrypts each user's own OpenAI key at rest. Without it, users cannot save a key.
 - ✅ `CORS_ORIGINS` - Frontend origins
 
 ### Optional (Backend)
 - ✅ `SMTP_HOST/PORT/USER/PASS` - Email notifications
 - ✅ `VAPID_PRIVATE_KEY/PUBLIC_KEY` - Push notifications
-- ✅ `EMERGENT_LLM_KEY` - Fallback AI
-- ✅ `AZURE_ENDPOINT/MODEL` - AI defaults
+- ✅ `OPENAI_API_KEY` - Shared fallback AI key (omit for pure bring-your-own-key)
+- ✅ `OPENAI_MODEL/BASE_URL` - AI defaults
 
 ### Required (Frontend)
 - ✅ `VITE_BACKEND_URL` - API endpoint (build arg, not runtime env)
@@ -234,7 +234,7 @@ docker-compose -f compose.yaml up -d --build
 
 1. **Email Notifications:** Require SMTP configuration (optional)
 2. **Push Notifications:** Browser-based only (not native mobile)
-3. **AI Insights:** Require Azure AI key or use fallback templates
+3. **AI Insights:** Require the user's own OpenAI key (or a server fallback key); otherwise templates
 4. **Rate Limiting:** Per-IP basis (consider Redis for production scale)
 
 ---
