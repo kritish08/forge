@@ -1,0 +1,33 @@
+# Local development overrides — OPT-IN ONLY:
+#
+#   docker compose -f compose.yaml -f compose.dev.yaml up
+#
+# This was named docker-compose.override.yml, which Compose merges AUTOMATICALLY
+# into any bare `docker compose` command. That was a production footgun: a plain
+# `docker compose up -d` on the server built the frontend against
+# VITE_BACKEND_URL=http://localhost:8005 and detached the containers from
+# Traefik's network (external: false, below). A bundle compiled with a localhost
+# API host is exactly the /undefined/api/... failure of 2026-09-08.
+#
+# Production must always pass `-f compose.yaml` explicitly (see deploy.yml).
+services:
+  backend:
+    ports:
+      - "8005:8001"
+    environment:
+      - CORS_ORIGINS=http://localhost:3005,http://127.0.0.1:3005
+
+  frontend:
+    build:
+      args:
+        # Local build talks to the backend on its published port, not the
+        # Traefik production host.
+        VITE_BACKEND_URL: http://localhost:8005
+    ports:
+      - "3005:80"
+
+networks:
+  # Override the external requirement so it just creates a local bridge
+  n8n-singh_default:
+    external: false
+    driver: bridge

@@ -41,14 +41,16 @@ jobs:
         id: before
         env:
           APP: ${{ vars.APP_URL }}
+          API: ${{ vars.API_URL }}
         run: |
           set -uo pipefail
           echo "### Before" >> "$GITHUB_STEP_SUMMARY"
           bundle=$(curl -sS -m 20 "$APP/" | grep -oE 'static/js/[^"]+\.js' | head -1 || true)
           echo "- bundle: \`${bundle:-unknown}\`" >> "$GITHUB_STEP_SUMMARY"
-          code=$(curl -sS -m 20 -o /dev/null -w '%{http_code}' "$APP/undefined/api/auth/refresh" || echo 000)
-          echo "- \`/undefined/api/auth/refresh\` -> \`$code\`" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$code" = "200" ]; then
+          # Same artifact-based test as the post-deploy step. Probing
+          # /undefined/api/... is useless here: the SPA fallback 200s every
+          # unmatched path, so it can never distinguish a good build from a bad one.
+          if [ -n "$bundle" ] && ! curl -sS -m 30 "$APP/$bundle" | grep -qF "$API"; then
             echo "- :warning: **the live frontend has no API host — sign-in is broken**" >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -86,22 +88,40 @@ jobs:
           ssh -o BatchMode=yes target 'echo "ssh ok: $(hostname)"'
 
       # ── Deploy ──────────────────────────────────────────────────────────────
-      - name: Pull, rebuild, restart
+      - name: Sync, rebuild, restart
         if: inputs.mode == 'deploy'
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           set -euo pipefail
           test -n "$DEPLOY_PATH" || { echo "::error::secret DEPLOY_PATH is not set"; exit 1; }
+
+          # Ship the runner's checkout rather than pulling on the server. The
+          # deploy target is NOT a git working copy (and giving it credentials
+          # for a private repo just to read code it was handed is needless), so
+          # `git fetch && git reset --hard` there fails outright.
+          #
+          # --delete matters: it is not tidiness. `git archive`-style copying
+          # adds files but never removes them, and the CRA->Vite rename left a
+          # stale src/App.js beside the new App.jsx — Vite then tried to parse
+          # JSX in a .js and the build died. Deleting removed files prevents that.
+          #
+          # .env is excluded so the server's real secrets are never touched;
+          # they exist only there and are git-ignored.
+          rsync -a --delete \
+            --exclude='.git' --exclude='node_modules' --exclude='.env' \
+            ./ "target:${DEPLOY_PATH}/"
+          echo "synced $(git rev-parse --short HEAD) $(git log -1 --format=%s)"
+
+          # -f compose.yaml is REQUIRED, never a bare `docker compose`. Without
+          # it Compose auto-merges any override file and the frontend gets built
+          # against a localhost API host with the Traefik network detached.
+          #
+          # The frontend MUST be rebuilt: the API host is compiled into the
+          # bundle. compose.yaml supplies it as a build arg from DOMAIN_NAME,
+          # and the Dockerfile refuses to produce a bundle without it.
           ssh -o BatchMode=yes target bash -euo pipefail <<REMOTE
             cd "$DEPLOY_PATH"
-            git fetch origin main
-            git reset --hard origin/main
-            echo "now at: \$(git rev-parse --short HEAD) \$(git log -1 --format=%s)"
-
-            # The frontend MUST be rebuilt: the API host is compiled into the
-            # bundle. compose.yaml supplies it as a build arg from DOMAIN_NAME,
-            # and the Dockerfile refuses to produce a bundle without it.
             docker compose -f compose.yaml build --pull
             docker compose -f compose.yaml up -d
             docker compose -f compose.yaml ps
@@ -157,15 +177,36 @@ jobs:
           bundle=$(curl -sS -m 20 "$APP/" | grep -oE 'static/js/[^"]+\.js' | head -1 || true)
           echo "- bundle: \`${bundle:-unknown}\`" >> "$GITHUB_STEP_SUMMARY"
 
-          # THE regression check. A frontend with no API host resolves its calls
-          # to /undefined/api/... , which the SPA fallback answers with the app
-          # shell and a 200. That is what shipped on 2026-09-08.
-          code=$(curl -sS -m 20 -o /dev/null -w '%{http_code}' "$APP/undefined/api/auth/refresh" || echo 000)
-          if [ "$code" = "404" ]; then
-            echo "- :white_check_mark: \`/undefined/api/...\` -> 404" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- :x: \`/undefined/api/...\` -> \`$code\` (expected 404 — the bundle has no API host)" >> "$GITHUB_STEP_SUMMARY"
+          # THE regression check: does the bundle we just shipped actually carry
+          # an API host?
+          #
+          # This used to probe $APP/undefined/api/auth/refresh and demand a 404.
+          # That never worked. nginx.conf's SPA entry is
+          # `try_files $uri $uri/ /index.html`, a catch-all that answers EVERY
+          # unmatched path with the app shell and a 200 — /undefined/api/... ,
+          # /total-nonsense-path, all of them. So the probe returned 200 on a
+          # healthy deploy and a broken one alike: a constant, not a signal, and
+          # it failed 100% of deploys.
+          #
+          # Assert on the artifact instead. Fetch the shipped bundle and look for
+          # the API host positively, plus the negative "undefined/api". Note the
+          # negative alone is not enough — a previous toolchain minified the bug
+          # to `void 0+"/api"`, which no grep for "undefined/api" would catch.
+          if [ -z "$bundle" ]; then
+            echo "- :x: could not determine the shipped bundle from index.html" >> "$GITHUB_STEP_SUMMARY"
             fail=1
+          else
+            js=$(curl -sS -m 30 "$APP/$bundle" || true)
+            if printf '%s' "$js" | grep -qF "$API"; then
+              echo "- :white_check_mark: bundle targets \`$API\`" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- :x: bundle does NOT contain \`$API\` — it shipped with no API host" >> "$GITHUB_STEP_SUMMARY"
+              fail=1
+            fi
+            if printf '%s' "$js" | grep -q "undefined/api"; then
+              echo "- :x: bundle contains \`undefined/api\`" >> "$GITHUB_STEP_SUMMARY"
+              fail=1
+            fi
           fi
 
           # The real backend must answer as itself, not as the SPA.
