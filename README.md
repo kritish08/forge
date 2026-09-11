@@ -2,7 +2,7 @@
 
 A habit tracker with a FastAPI backend, MongoDB, and a React frontend, self-hosted behind Traefik and a Cloudflare Tunnel. It runs at [forge.zerp.me](https://forge.zerp.me).
 
-The app began as a generated scaffold — 59 of the 86 commits at the root of the history are machine-written `auto-commit` entries. It worked well enough to demo and badly enough to be unusable: the production frontend was compiled without an API host and nobody could sign in, the streak counter read zero every morning, and the service worker had never successfully cached anything. Most of the work in this repository is the audit that followed, and the decisions below came out of specific failures rather than from a design document.
+The app began as a generated scaffold. The first commit is that scaffold, squashed from the 60 machine-written commits it arrived as and left attributed to the generator; every commit after it is hand-written. It worked well enough to demo and badly enough to be unusable: the production frontend was compiled without an API host and nobody could sign in, the streak counter read zero every morning, and the service worker had never successfully cached anything. Most of the work in this repository is the audit that followed, and the decisions below came out of specific failures rather than from a design document.
 
 ## Architecture, and why
 
