@@ -65,7 +65,7 @@ export default function Login() {
             type="button"
             onClick={() => navigate("/")}
             aria-label="Back to home"
-            className="mb-4 inline-flex items-center gap-2.5 rounded-lg transition-transform active:scale-95"
+            className="mb-4 inline-flex items-center gap-2.5 rounded-xl transition-transform active:scale-95"
           >
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-accent">
               <svg className="h-6 w-6 text-accent-contrast" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

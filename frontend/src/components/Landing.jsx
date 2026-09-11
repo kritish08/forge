@@ -14,7 +14,7 @@ function Flame({ className = "" }) {
 function Wordmark() {
   return (
     <span className="inline-flex items-center gap-2">
-      <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent">
+      <span className="grid h-7 w-7 place-items-center rounded-xl bg-accent">
         <Flame className="h-4 w-4 text-accent-contrast" />
       </span>
       <span className="font-chivo text-xl font-black tracking-tight text-ink">FORGE</span>
@@ -34,7 +34,7 @@ function CoachCard() {
   return (
     <figure className="rounded-2xl border border-line bg-surface-raised p-5 shadow-sheet">
       <figcaption className="mb-3 flex items-center gap-2">
-        <span className="grid h-6 w-6 place-items-center rounded-md bg-accent-soft">
+        <span className="grid h-6 w-6 place-items-center rounded-xl bg-accent-soft">
           <Spark className="h-3.5 w-3.5 text-accent" />
         </span>
         <span className="font-chivo text-sm font-bold text-ink">Your coach · Strategic</span>
@@ -127,13 +127,13 @@ export default function Landing({ onGetStarted }) {
             <ThemeToggle />
             <button
               onClick={() => go(false)}
-              className="hidden rounded-lg px-3 py-2 font-chivo text-sm font-bold text-ink-muted transition-colors hover:text-ink sm:block"
+              className="hidden rounded-xl px-3 py-2 font-chivo text-sm font-bold text-ink-muted transition-colors hover:text-ink sm:block"
             >
               Sign in
             </button>
             <button
               onClick={() => go(true)}
-              className="rounded-lg bg-ink px-4 py-2 font-chivo text-sm font-bold text-surface transition-transform active:scale-95"
+              className="rounded-xl bg-ink px-4 py-2 font-chivo text-sm font-bold text-surface transition-transform active:scale-95"
             >
               Start free
             </button>
