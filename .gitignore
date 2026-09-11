@@ -80,3 +80,10 @@ agenthub/agents/youtube/db
 # Environment files
 *.env
 *.env.*
+
+# Scaffold residue and generated test artefacts — removed 2026-09-11.
+.emergent/
+.gitconfig
+test_reports/
+test_result.md
+auth_testing.md
