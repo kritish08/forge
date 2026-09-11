@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import api from "../utils/api";
 import { Input, Button } from "./primitives";
+import { Check } from "./icons";
 
 export default function Login() {
   const { setUser } = useAuth();
@@ -60,32 +61,40 @@ export default function Login() {
       <div className="flex-1 flex flex-col items-center justify-center px-6 pt-16 pb-8">
         {/* Logo */}
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center gap-2 mb-4 cursor-pointer" onClick={() => navigate("/")}>
-            <div className="w-10 h-10 bg-accent rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-accent-contrast" viewBox="0 0 24 24" fill="currentColor">
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            aria-label="Back to home"
+            className="mb-4 inline-flex items-center gap-2.5 rounded-lg transition-transform active:scale-95"
+          >
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-accent">
+              <svg className="h-6 w-6 text-accent-contrast" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 3c1.1 0 2 .9 2 2v.5c0 .3.2.5.5.5s.5-.2.5-.5V7c0-.6.4-1 1-1s1 .4 1 1v1c0 3.3-2.7 6-6 6H9.5C8.1 14 7 12.9 7 11.5S8.1 9 9.5 9H11c.6 0 1-.4 1-1V7c0-.6.4-1 1-1z" />
               </svg>
-            </div>
-            <h1 className="text-3xl font-black text-ink font-chivo tracking-tight">FORGE</h1>
-          </div>
-          <p className="text-accent-bold text-sm font-manrope font-medium">
-            Consistency forged in fire
+            </span>
+            <span className="font-chivo text-3xl font-black tracking-tight text-ink">FORGE</span>
+          </button>
+          <p className="font-manrope text-sm font-medium text-ink-muted">
+            {isRegistering ? "Start reading your own patterns." : "Consistency, forged from data."}
           </p>
         </div>
 
-        {/* Value props */}
+        {/* Value props — only on sign-in, kept quiet so the form leads */}
         {!isRegistering && (
-          <div className="w-full max-w-sm space-y-3 mb-10">
+          <ul className="mb-10 w-full max-w-sm space-y-3">
             {[
-              { text: "Learns which days and times you actually follow through" },
-              { text: "Insights drawn from your own history, not generic advice" },
-              { text: "Coaching that adapts as your habits change" },
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-3 bg-accent-soft rounded-xl p-4 border border-accent/25">
-                <p className="text-sm text-ink font-manrope font-medium">{item.text}</p>
-              </div>
+              "Learns which days and times you actually follow through",
+              "Insights drawn from your own history, not generic advice",
+              "Coaching that adapts as your habits change",
+            ].map((text) => (
+              <li key={text} className="flex items-start gap-3">
+                <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent-soft">
+                  <Check className="h-3 w-3 text-accent" />
+                </span>
+                <p className="font-manrope text-sm leading-snug text-ink-muted">{text}</p>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
 
         {/* Auth Form */}

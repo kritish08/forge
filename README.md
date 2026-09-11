@@ -10,6 +10,7 @@ FastAPI · MongoDB · React — behind Traefik and a Cloudflare Tunnel.
 ![React](https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=black)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.11x-009688?logo=fastapi&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-129%20passing-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
 [Live at forge.zerp.me](https://forge.zerp.me)
 
@@ -225,4 +226,4 @@ Not decoration — these are real, and mostly measured against a running instanc
 
 ## Licence
 
-No licence file is present, so default copyright applies and no permissions are granted. Ask if you would like to use it.
+[MIT](LICENSE) — free to use, modify and distribute, no warranty.
