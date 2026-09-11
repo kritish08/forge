@@ -1,405 +1,181 @@
-# 🔥 FORGE - Intelligent Habit Tracker
+# FORGE
 
-**Consistency forged in fire.**
+A habit tracker: FastAPI + MongoDB + React, self-hosted behind Traefik and a Cloudflare Tunnel.
+Live at **[forge.zerp.me](https://forge.zerp.me)**.
 
-FORGE is a data-driven habit tracking application with AI-powered insights, advanced analytics, and gamification. Unlike generic trackers, FORGE learns your unique patterns and provides personalized coaching that evolves with your progress.
+The product is a vehicle. What is worth reading here is the audit trail: this
+started life as a generated scaffold — 59 of the 86 commits at the root of
+history are machine-written `auto-commit` entries, and `.emergent/` still holds
+the job manifest — and the work since has been turning that into something that
+holds up in production. If you are evaluating whether I can reason about a system
+I did not write, that is the part to read.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](https://opensource.org/licenses/MIT)
-[![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110-green.svg)](https://fastapi.tiangolo.com/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-7.0-brightgreen.svg)](https://www.mongodb.com/)
-
----
-
-## ✨ Features
-
-### 🎯 Core Habit Tracking
-- **Priority-based habits** with weighted points (⭐ = 1pt, ⭐⭐ = 2pts, ⭐⭐⭐ = 3pts)
-- **Daily check-ins** with timestamps
-- **Streak tracking** with automatic calculation
-- **Context tracking** - log why each habit matters to you
-
-### 📊 Advanced Analytics
-- **Score graphs** - 30-day completion trends
-- **Heatmap calendar** - visual consistency overview
-- **Pattern analysis:**
-  - Best/worst days of the week
-  - Time-of-day performance (early, morning, afternoon, evening)
-  - Priority-level breakdown
-- **Real-time stats** - streaks, completion rates, level progress
-
-### 🤖 AI Coach
-- **Adaptive tone** - Choose from Supportive, Strategic, or Direct mode
-- **Contextual insights** - AI analyzes YOUR data, not generic advice
-- **Memory system** - Tracks past suggestions and their outcomes
-- **Bring your own key** - Each account adds its own OpenAI key in Settings, stored encrypted; built-in templates cover accounts without one
-
-### 🎮 Gamification
-- **Level system** with 10 tiers (0 → 9000+ points)
-- **Contextual achievements:**
-  - First Flame, Perfect Day, 7-Day Streak, Forge Legend, Centurion
-  - Morning Warrior, Comeback King
-- **Real-time progress tracking**
-
-### 🧘 Mental Wellness
-- **Daily mood check-ins** (1-5 scale)
-- **Gratitude journal** (optional)
-- **Safety feature** - Direct Mode includes low mood monitoring with crisis resources
-
-### 🔔 Notifications
-- **Push notifications** (browser-based, PWA-ready)
-- **Email reminders** - Daily (8 PM) and Weekly summaries (Sundays 9 AM)
-- **In-app toasts** for real-time feedback
-
-### 🔐 Authentication
-- **Email/password registration & login**
-- **JWT-based authentication** with secure refresh tokens
-- **Password reset** via email (1-hour token expiration)
-- **Rate limiting** to prevent abuse
-
-### 📱 PWA Support
-- **Installable** on mobile devices
-- **Offline-ready** with service workers
-- **Mobile-first design** with responsive layout
+Start with `git log`. The commit messages carry the reasoning; this file is a map.
 
 ---
 
-## 🛠️ Tech Stack
+## Four problems worth your time
 
-### Frontend
-- **React 19** - UI framework
-- **Vite** - Build tool and dev server
-- **TailwindCSS** - Styling
-- **React Router** - Navigation
-- **Axios** - API client
-- **Sonner** - Toast notifications
+### 1. A green build that shipped a broken site
 
-Charts are hand-drawn SVG (`src/components/charts.jsx`) rather than a charting
-library — the app has two of them, and they need to be theme-aware and usable by
-touch.
+Production served a frontend compiled without an API host. Every request became
+`/undefined/api/...`, hit the nginx SPA fallback, and came back as **HTML with a
+200**. Nobody could sign in. The backend was healthy throughout, the build had
+succeeded, and CI was green.
 
-### Backend
-- **FastAPI** - Modern Python web framework
-- **Motor** - Async MongoDB driver
-- **PyJWT** - JWT authentication
-- **Passlib + Bcrypt** - Password hashing
-- **APScheduler** - Scheduled jobs (notifications)
-- **SlowAPI** - Rate limiting
-- **AIOSMTPLIB** - Email sending
-- **PyWebPush** - Push notifications
+Root cause: Vite inlines `VITE_BACKEND_URL` at *build* time, `.dockerignore`
+excludes `.env`, and compose was passing `env_file` to the *runtime* nginx
+container. Nothing ever reached the compiler.
 
-### Database
-- **MongoDB 7.0** - NoSQL database
+The fix that matters is not the build arg — it is that
+[`frontend/Dockerfile`](frontend/Dockerfile#L38-L54) now asserts on the **output**:
+the compiled JS must contain the expected host, and must not contain
+`undefined/api`. Verified against all three shapes — correct build passes, missing
+arg fails before wasting a compile, arg-present-but-not-reaching-the-build fails on
+the output assertion.
 
-### Deployment
-- **Docker & Docker Compose** - Containerization
-- **Nginx** (recommended) - Reverse proxy
-- **Ubuntu VPS** - Production target
+The negative assertion alone is worthless, and that is the interesting part. While
+investigating, I grepped the live bundle for `undefined/api`, found nothing, and
+nearly cleared a deployment that was in fact broken — the minifier had folded the
+concatenation to `void 0+"/api"`, joined at runtime. **Positive assertions survive
+your toolchain; negative ones don't.**
 
----
+### 2. A crash that passed lint, build, and every test
 
-## 🚀 Quick Start
+One entry in a list kept an emoji `icon` key after the rest became `Icon`
+components. The page rendered `<undefined />` and threw React error #130. Lint
+passed. The production build passed. All tests passed. The only thing that caught
+it was loading the page.
 
-### Prerequisites
-- **Node.js 18+** and **Yarn**
-- **Python 3.11+**
-- **MongoDB 7.0+**
+[`frontend/src/screens.render.test.jsx`](frontend/src/screens.render.test.jsx)
+now mounts all nine screens in jsdom, which catches the whole class: undefined
+components, bad hook calls, destructuring undefined during first paint.
 
-### Local Development
+I confirmed it works by reintroducing the exact bug: the build still succeeds, the
+render test fails with "Element type is invalid." A regression test you have not
+watched fail is a guess.
 
-#### 1. Clone the repository
-```bash
-git clone https://github.com/yourusername/forge.git
-cd forge
-```
+### 3. Two silent-failure modes, turned into build failures
 
-#### 2. Backend Setup
-```bash
-cd backend
+A bulk replace of `bg-orange-50` → `bg-accent-soft` also matched inside
+`bg-orange-500`, leaving `bg-accent-soft0` on 24 elements. Tailwind emits nothing
+for an unknown class, so the notification toggles lost their colour with no error
+anywhere. Separately, raw palette steps creeping back in were what left ~40 colours
+with no dark-mode variant to begin with.
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+Both are now test failures, not review items —
+[`tokens.test.js`](frontend/src/tokens.test.js) parses every source file and
+rejects malformed token names, raw palette steps, and orphaned `dark:` variants.
 
-# Install dependencies
-pip install -r requirements.txt
+The companion, [`contrast.test.js`](frontend/src/contrast.test.js), checks the
+palette against WCAG AA in both themes. Every contrast failure found in review was
+token-level, not screen-level — one value slightly too light failed identically on
+nine screens at once. 41 failures went to 0, and the causes were almost all in the
+palette: `--text-subtle` failed AA in *both* themes; the light accent cleared only
+3.56:1, and since contrast is symmetric it failed both as text *and* as a fill. The
+test comment states what it cannot catch (a component pairing two valid tokens
+badly), because a test that overstates its coverage is worse than none.
 
-# Configure environment
-cp .env.example .env
-# Edit .env and add your configurations
+### 4. Client and server disagreed about what day it was
 
-# Run backend
-uvicorn server:app --reload --port 8001
-```
+Every client date came from `new Date().toISOString()` — UTC — while the server
+stamped completions using the timezone on the user record. For anyone off UTC there
+was a window each day where the dashboard queried one date and the server wrote
+another, and the checkmark appeared to reset.
 
-#### 3. Frontend Setup
-```bash
-cd frontend
+Fixed by making [`frontend/src/utils/date.js`](frontend/src/utils/date.js) the
+single date authority, with day arithmetic on UTC-midnight dates built from
+`YYYY-MM-DD` strings so a DST transition cannot shift it. Verified with
+`Pacific/Midway` while UTC was a day ahead.
 
-# Install dependencies
-yarn install --frozen-lockfile
-
-# Configure environment
-cp .env.example .env
-# Edit .env and set VITE_BACKEND_URL=http://localhost:8001
-
-# Run frontend
-yarn dev
-```
-
-Visit `http://localhost:3000` 🎉
+The same audit found the streak displayed 0 every morning — `compute_global_streak`
+broke on the first incomplete day starting from *today*, so a 30-day streak read 0
+from midnight until the last habit was ticked. Today is now a grace day: it extends
+the streak when complete, is forgiven when not, and any earlier gap still ends it.
 
 ---
 
-## 🐳 Docker Deployment
+## Decisions
 
-### Production Setup (Ubuntu VPS)
+**Semantic tokens, not a palette.** `tokens.css` defines `surface` / `ink` /
+`accent` as space-separated RGB with `<alpha-value>`. Components never name a
+colour. This makes "a value with no dark variant" structurally impossible rather
+than a thing to remember, and it is enforced by the tests above.
 
-#### 1. Install Docker
-```bash
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-```
+**Build-time config is a correctness problem.** The frontend's API host cannot be a
+runtime env var — Vite inlines it. That single fact caused the outage in §1,
+and it is why the Dockerfile asserts on the artifact and the deploy workflow
+re-fetches the shipped bundle to check it.
 
-#### 2. Configure Environment
-```bash
-# Edit backend/.env
-MONGO_URL=mongodb://mongo:27017
-DB_NAME=forge_db
-JWT_SECRET_KEY=<generate with: openssl rand -hex 32>
+**Scheduler slots are claimed, not fired.** The notification job runs every minute
+against a grace window, deduping on a per-slot `last_daily_sent` date
+([`backend/notifications.py`](backend/notifications.py#L116-L166)), so a restart
+inside the window neither double-sends nor drops the send.
 
-# Optional: Add SMTP for emails
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your@email.com
-SMTP_PASS=your-app-password
+**TTL indexes only act on BSON dates.** MongoDB's TTL monitor silently ignores
+anything else, so rows written before the index existed — with ISO *strings* —
+would have sat there forever. [`migrate_token_expiry.py`](backend/migrate_token_expiry.py)
+converts them; dry-run by default, idempotent, and it leaves an unparseable expiry
+alone rather than guessing.
 
-# Edit frontend/.env
-VITE_BACKEND_URL=https://yourdomain.com   # build-time only, see note below
-```
-
-#### 3. Deploy
-```bash
-docker-compose -f compose.yaml up -d --build
-```
-
-#### 4. Setup Nginx + SSL (Optional)
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for full production setup with HTTPS.
+**Deleting beats adding.** Of 46 files in `components/ui/`, application code
+imported two. Recharts was the heaviest dependency in the tree, imported for two
+charts, and its hardcoded `stroke="#374151"` was wrong in one theme by
+construction — both are now hand-drawn SVG that reads from the tokens.
 
 ---
 
-## 📖 API Documentation
+## Measured
 
-Once running, visit:
-- **Backend API Docs:** `http://localhost:8001/docs` (Swagger UI)
-- **Alternative Docs:** `http://localhost:8001/redoc` (ReDoc)
+| | Before | Now |
+|---|---|---|
+| Frontend initial load | 283,951 B gzipped, no route splitting | 125 kB gzipped, route-split |
+| Frontend runtime dependencies | 53 | **7** |
+| Frontend source files | 73 | 40 |
+| Contrast failures (7 screens × 2 themes) | 41 | **0** |
+| Production build | tens of seconds (CRA) | **~0.95 s** (Vite) |
+| Tests | 0 | **57 pytest + 66 vitest** |
 
-### Key Endpoints
+Before-numbers are from the commits that changed them, measured over HTTP rather
+than estimated. Reproduce the current ones with `yarn build` and `pytest`.
 
-**Authentication:**
-- `POST /api/auth/register` - Create account
-- `POST /api/auth/login` - Login
-- `POST /api/auth/forgot-password` - Request password reset
-- `POST /api/auth/reset-password` - Reset password
-- `GET /api/auth/me` - Get current user
-
-**Habits:**
-- `GET /api/habits` - List habits
-- `POST /api/habits` - Create habit
-- `PUT /api/habits/{id}` - Update habit
-- `DELETE /api/habits/{id}` - Delete habit
-
-**Completions:**
-- `POST /api/completions` - Check in habit
-- `GET /api/completions` - Get completions
-
-**Analytics:**
-- `GET /api/analytics/stats` - Overview stats
-- `GET /api/analytics/heatmap` - Calendar heatmap data
-- `GET /api/analytics/patterns` - Behavioral patterns
-
-**AI Coach:**
-- `POST /api/ai/insight` - Generate AI insight
-
-**Notifications:**
-- `POST /api/notifications/subscribe` - Subscribe to push
-- `POST /api/notifications/test` - Test notification
+Backend is 1,936 lines across 9 modules, plus three one-off migration scripts.
+36 endpoints, 7 rate-limited.
 
 ---
 
-## 🔑 Environment Variables
-
-### Backend (`backend/.env`)
-```env
-# Database
-MONGO_URL=mongodb://localhost:27017
-DB_NAME=forge_db
-
-# Security
-JWT_SECRET_KEY=<your-secret-key>
-
-# CORS
-CORS_ORIGINS=http://localhost:3000
-
-# Email (Optional)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your@email.com
-SMTP_PASS=your-app-password
-SMTP_FROM=FORGE <noreply@yourdomain.com>
-
-# Push Notifications (Optional)
-VAPID_PRIVATE_KEY=<generate with web-push CLI>
-VAPID_PUBLIC_KEY=<generate with web-push CLI>
-
-# AI — every user brings their own OpenAI key from Settings, stored encrypted
-# under ENCRYPTION_KEY. The three below are optional:
-#   OPENAI_API_KEY  a shared fallback for accounts that haven't added one.
-#                   Leave it empty for pure bring-your-own-key.
-#   OPENAI_MODEL    the default model a new key starts on.
-#   OPENAI_BASE_URL point at an OpenAI-compatible gateway if you use one.
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_BASE_URL=https://api.openai.com/v1
-
-# App
-APP_URL=http://localhost:3000
-```
-
-### Frontend (`frontend/.env`)
-```env
-VITE_BACKEND_URL=http://localhost:8001
-```
-
-> **This is a build-time variable, not a runtime one.** Vite inlines it into the
-> bundle when the image is built, so `docker compose` passes it as a build arg
-> (see `compose.yaml`); a runtime `env_file` on the nginx container cannot reach
-> it. `frontend/.env` is used for local `yarn dev` only and is excluded from the
-> Docker build context. The Dockerfile fails the build if the arg is empty.
-
----
-
-## 📸 Screenshots
-
-### Authentication
-- Clean login/registration with email & password
-- Forgot password flow with email reset link
-
-### Dashboard
-- Real-time streak and points tracking
-- Daily habit checklist with priority indicators
-- Mood check-in widget
-
-### Analytics
-- 30-day score trends
-- Calendar heatmap
-- Day-of-week and time-of-day patterns
-
-### AI Coach
-- Mode selection (Supportive, Strategic, Direct)
-- Contextual insights based on your data
-- Suggestion tracking system
-
-### Settings
-- Habit management
-- Notification preferences (Push + Email toggles)
-- AI API key configuration
-- Coach mode customization
-
----
-
-## 🧪 Testing
+## Running it
 
 ```bash
-# Backend unit tests (pure logic + JWT security)
-cd backend
-pip install -r requirements-dev.txt
-pytest
+# Backend — needs MONGO_URL and JWT_SECRET_KEY in backend/.env
+cd backend && python -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn server:app --reload --port 8001
 
-# Frontend unit tests
-cd frontend
-yarn test --watchAll=false
+# Frontend
+cd frontend && yarn install && VITE_BACKEND_URL=http://localhost:8001 yarn dev
+
+# Tests
+cd backend && pytest          # 57 unit; -m integration needs a live server
+cd frontend && yarn test      # 66
 ```
 
-Both suites run on every push and pull request — see `.github/workflows/ci.yml`.
-The frontend build runs there with `CI=true`, so lint warnings fail the build.
+Docker: `docker compose -f compose.yaml up -d --build`. The `-f` is load-bearing —
+`compose.dev.yaml` is opt-in precisely because a file named
+`docker-compose.override.yml` auto-merges into a bare `docker compose`, which is how
+a localhost API host once got baked into a production image. Full notes in
+[DEPLOYMENT.md](DEPLOYMENT.md).
+
+AI insights are bring-your-own-key: each account adds an OpenAI key in Settings,
+validated against the API before it is stored, encrypted at rest, never returned to
+the client. Without one, insights fall back to templates.
 
 ---
 
-## 📋 Roadmap
+## Known limits
 
-### V1 (Current)
-- ✅ Core habit tracking
-- ✅ Analytics & visualizations
-- ✅ AI coach with memory
-- ✅ Gamification
-- ✅ Mood tracking
-- ✅ JWT authentication
-- ✅ Notifications (Push + Email)
-- ✅ PWA support
-- ✅ Docker deployment
-
-### V2 (Planned)
-- [ ] Social accountability (share progress)
-- [ ] Habit stacking suggestions
-- [ ] Voice journaling
-- [ ] Advanced pattern detection (mood-habit causality)
-- [ ] Community challenges
-- [ ] Mobile apps (React Native)
-- [ ] API rate limiting per user
-- [ ] Multi-language support
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Guidelines
-- Follow existing code style
-- Add tests for new features
-- Update documentation
-- Keep commits atomic and well-described
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- **shadcn/ui** - Beautiful component library
-- **Recharts** - Data visualization
-- **FastAPI** - Modern Python framework
-- **MongoDB** - Flexible NoSQL database
-
----
-
-## 📞 Support
-
-- **Issues:** [GitHub Issues](https://github.com/yourusername/forge/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/forge/discussions)
-- **Email:** support@yourdomain.com
-
----
-
-## 🔗 Links
-
-- **Live Demo:** [https://forge-demo.yourdomain.com](https://forge-demo.yourdomain.com)
-- **Documentation:** [Full Deployment Guide](./DEPLOYMENT.md)
-- **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
-
----
-
-**Built with 🔥 by [Your Name]**
-
-*"Consistency forged in fire."*
+- The notification scheduler sweeps every user every minute. Fine at this size,
+  wrong at any real one — it should be a per-slot query or a job queue.
+- `manifest.json` still points at SVG icons; PWA install prompts want PNGs.
+- The integration suite (`-m integration`) needs a live server and is deselected by
+  default, so CI covers pure logic and render smoke tests only.
+- No E2E tests. Every bug in §1 and §2 would have been caught by one.
