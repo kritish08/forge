@@ -14,7 +14,7 @@ from models import RegisterRequest, LoginRequest, PasswordResetRequest, Password
 from security import create_token, decode_token, get_current_user, pwd_context, hash_token, encrypt_value, encryption_available
 from logic import (get_level_progress, get_user_today, is_habit_scheduled_today, compute_global_streak, aggregate_consistency, compute_dow_patterns, compute_time_patterns, validate_completion_date)
 from achievements import check_and_award_achievements, ACHIEVEMENT_CATALOG
-from notifications import scheduler, send_email, send_welcome_email, send_push, daily_reminder_job, weekly_summary_job
+from notifications import scheduler, send_email, send_welcome_email, send_push, daily_reminder_job, weekly_summary_job, push_endpoint_is_safe
 from ai import generate_ai_insight, resolve_ai_credentials, openai_client
 
 app = FastAPI()
@@ -282,6 +282,10 @@ async def get_notification_status(current_user=Depends(get_current_user)):
 
 @api_router.post("/notifications/subscribe")
 async def subscribe_push(data: PushSubscribeRequest, current_user=Depends(get_current_user)):
+    # The endpoint is attacker-controlled and the server will POST to it later,
+    # so it is validated before storage rather than trusted.
+    if not push_endpoint_is_safe(data.subscription.get("endpoint")):
+        raise HTTPException(status_code=400, detail="Invalid push subscription endpoint.")
     await db.users.update_one({"user_id": current_user["user_id"]},
                                {"$set": {"push_subscription": data.subscription}})
     return {"message": "Subscribed to push notifications"}
@@ -303,8 +307,11 @@ async def test_notification(current_user=Depends(get_current_user)):
         await send_push(current_user, "FORGE Test", "Push notifications are working! 🔥", "/")
         return {"success": True, "message": "Test notification sent!"}
     except Exception as e:
+        # The exception text can carry the push endpoint's HTTP response body,
+        # so it is logged server-side but never returned to the caller.
         logger.error("Test push failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=502,
+                            detail="Push notification failed. Try re-enabling notifications in your browser.")
 
 from fastapi.responses import HTMLResponse
 

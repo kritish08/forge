@@ -1,4 +1,5 @@
-import os, json
+import os, json, socket, ipaddress
+from urllib.parse import urlparse
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -9,6 +10,48 @@ from logic import (get_level, is_habit_scheduled_today, compute_global_streak, a
 from security import create_token
 
 scheduler = AsyncIOScheduler(timezone="UTC")
+
+
+def push_endpoint_is_safe(endpoint) -> bool:
+    """Whether a Web Push endpoint is safe to send to.
+
+    The stored subscription is attacker-controlled — a user posts whatever
+    `endpoint` they like to /notifications/subscribe, and the server then makes
+    an authenticated POST to it. Web Push endpoints are arbitrary vendor URLs
+    (FCM, Mozilla autopush, Apple...), so the host cannot be allowlisted. What
+    CAN be required is that it is https and that its host does not resolve onto
+    the internal network — which turns an SSRF into an ordinary outbound
+    request. Every resolved address is checked, so a public name that resolves
+    to a private IP is rejected too.
+
+    Resolution happens here and again inside the HTTP client at send time, so a
+    determined DNS-rebinding attacker retains a narrow window; closing it fully
+    needs connection-level IP pinning the push library does not expose. This
+    blocks the straightforward cases (loopback, link-local metadata endpoints,
+    RFC-1918) rather than claiming to be airtight."""
+    if not isinstance(endpoint, str) or not endpoint:
+        return False
+    try:
+        u = urlparse(endpoint)
+    except Exception:
+        return False
+    if u.scheme != "https" or not u.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(u.hostname, u.port or 443, proto=socket.IPPROTO_TCP)
+    except Exception:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return False
+    return True
 
 async def send_email(to: str, subject: str, html_body: str):
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))
@@ -65,6 +108,10 @@ async def send_push(user: dict, title: str, body: str, url: str = "/"):
     sub = user.get("push_subscription")
     if not sub:
         raise ValueError("No push subscription stored for this user. Please enable notifications first.")
+    if not push_endpoint_is_safe(sub.get("endpoint")):
+        # A subscription can predate this check, or have been crafted to point at
+        # an internal address. Refuse rather than let the server fetch it.
+        raise ValueError("Push endpoint is not an allowed destination.")
     if not VAPID_PRIVATE_KEY_B64:
         raise ValueError("VAPID_PRIVATE_KEY is not configured in the server environment.")
     if not VAPID_PUBLIC_KEY:
