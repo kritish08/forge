@@ -68,29 +68,6 @@ const stats = [
     { value: "100%", label: "Private. Your data, your AI", suffix: "" },
 ];
 
-const testimonials = [
-    {
-        name: "Arjun M.",
-        role: "Software Engineer",
-        quote:
-            "I've tried every habit tracker. FORGE is the only one that actually tells me WHY I'm failing on Mondays instead of just showing me that I am.",
-        avatar: "AM",
-    },
-    {
-        name: "Priya S.",
-        role: "Product Designer",
-        quote:
-            "The AI coach called me out for skipping evening routines after late standups. It was right. Now I've restructured my schedule around that.",
-        avatar: "PS",
-    },
-    {
-        name: "David K.",
-        role: "Founder",
-        quote:
-            "Direct Mode is brutal and exactly what I needed. Finally a tool that doesn't sugarcoat my 40% completion rate.",
-        avatar: "DK",
-    },
-];
 
 import ThemeToggle from "./ThemeToggle";
 
@@ -329,38 +306,6 @@ export default function Landing({ onGetStarted }) {
                                 <div className="text-4xl font-black text-accent-contrast font-chivo mb-4">{item.step}</div>
                                 <h3 className="font-bold font-chivo text-ink mb-2">{item.title}</h3>
                                 <p className="text-sm text-ink-muted font-manrope leading-relaxed">{item.desc}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </section>
-
-            {/* ── TESTIMONIALS ────────────────────────────────── */}
-            <section className="py-20 px-6">
-                <div className="max-w-5xl mx-auto">
-                    <div className="text-center mb-14">
-                        <span className="text-accent text-xs font-chivo font-bold">
-                            Testimonials
-                        </span>
-                        <h2 className="text-4xl font-black text-ink font-chivo mt-3">
-                            Real people. Real patterns.
-                        </h2>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                        {testimonials.map((t) => (
-                            <div key={t.name} className="bg-surface-raised rounded-2xl border border-line p-6 shadow-sm">
-                                <p className="text-sm text-ink-muted font-manrope leading-relaxed italic mb-5">
-                                    "{t.quote}"
-                                </p>
-                                <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-full bg-accent flex items-center justify-center text-accent-contrast text-xs font-bold font-chivo">
-                                        {t.avatar}
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-ink font-chivo">{t.name}</p>
-                                        <p className="text-xs text-ink-subtle font-manrope">{t.role}</p>
-                                    </div>
-                                </div>
                             </div>
                         ))}
                     </div>

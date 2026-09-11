@@ -1,181 +1,137 @@
 # FORGE
 
-A habit tracker: FastAPI + MongoDB + React, self-hosted behind Traefik and a Cloudflare Tunnel.
-Live at **[forge.zerp.me](https://forge.zerp.me)**.
+A habit tracker with a FastAPI backend, MongoDB, and a React frontend, self-hosted behind Traefik and a Cloudflare Tunnel. It runs at [forge.zerp.me](https://forge.zerp.me).
 
-The product is a vehicle. What is worth reading here is the audit trail: this
-started life as a generated scaffold — 59 of the 86 commits at the root of
-history are machine-written `auto-commit` entries, and `.emergent/` still holds
-the job manifest — and the work since has been turning that into something that
-holds up in production. If you are evaluating whether I can reason about a system
-I did not write, that is the part to read.
+The app began as a generated scaffold — 59 of the 86 commits at the root of the history are machine-written `auto-commit` entries, and `.emergent/` still holds the job manifest. It worked well enough to demo and badly enough to be unusable: the production frontend was compiled without an API host and nobody could sign in, the streak counter read zero every morning, and the service worker had never successfully cached anything. Most of the work in this repository is the audit that followed, and the decisions below came out of specific failures rather than from a design document.
 
-Start with `git log`. The commit messages carry the reasoning; this file is a map.
+## Architecture, and why
 
----
+### The frontend's API host is asserted in the compiled bundle, not just passed to the build
 
-## Four problems worth your time
+Production served a frontend with no API host. Every request resolved to `/undefined/api/...`, hit the nginx SPA fallback, and came back as HTML with a 200 status. The backend was healthy the whole time and the build had succeeded.
 
-### 1. A green build that shipped a broken site
+The obvious fix is to pass `VITE_BACKEND_URL` as a Docker build argument, since Vite inlines it at compile time and a runtime `env_file` cannot reach it. I did that, and then added a check that the argument is non-empty. That check is necessary and not sufficient: a value can be supplied and still not reach the compiler. So after `yarn build`, the image greps the emitted JavaScript and fails unless it contains the expected host ([`frontend/Dockerfile:38-54`](frontend/Dockerfile)).
 
-Production served a frontend compiled without an API host. Every request became
-`/undefined/api/...`, hit the nginx SPA fallback, and came back as **HTML with a
-200**. Nobody could sign in. The backend was healthy throughout, the build had
-succeeded, and CI was green.
+The assertion is positive on purpose. While investigating the outage I grepped the live bundle for `undefined/api`, found nothing, and nearly concluded the deployment was fine. The minifier had folded the concatenation to `void 0+"/api"`, joined at runtime, which no search for the literal string would ever find. A negative assertion only holds if the searcher can predict how the toolchain will mangle the thing being searched for. A positive one does not depend on that.
 
-Root cause: Vite inlines `VITE_BACKEND_URL` at *build* time, `.dockerignore`
-excludes `.env`, and compose was passing `env_file` to the *runtime* nginx
-container. Nothing ever reached the compiler.
+What it cost: the image is no longer environment-agnostic. One image per API host, and the same bundle cannot be promoted from staging to production. The assertion is also coupled to how Rollup emits string literals, so a change in that area breaks the build rather than the app — which is the direction I wanted, but it is a real maintenance cost.
 
-The fix that matters is not the build arg — it is that
-[`frontend/Dockerfile`](frontend/Dockerfile#L38-L54) now asserts on the **output**:
-the compiled JS must contain the expected host, and must not contain
-`undefined/api`. Verified against all three shapes — correct build passes, missing
-arg fails before wasting a compile, arg-present-but-not-reaching-the-build fails on
-the output assertion.
+### The Fernet key is derived from the configured secret rather than being one
 
-The negative assertion alone is worthless, and that is the interesting part. While
-investigating, I grepped the live bundle for `undefined/api`, found nothing, and
-nearly cleared a deployment that was in fact broken — the minifier had folded the
-concatenation to `void 0+"/api"`, joined at runtime. **Positive assertions survive
-your toolchain; negative ones don't.**
+Each account stores its own OpenAI key, so the key has to be recoverable rather than hashed. Fernet is the obvious choice, and it requires exactly 32 url-safe-base64 bytes.
 
-### 2. A crash that passed lint, build, and every test
+The `ENCRYPTION_KEY` already deployed decodes to 48 bytes. It had been generated with `openssl rand -hex 32`, which is a perfectly good secret and not a Fernet key. Taking the textbook path would have meant `Fernet(ENCRYPTION_KEY)` raising at import, which is how the feature would have shipped: correct-looking in review, dead on arrival in production, and only discoverable by a user trying to save a key.
 
-One entry in a list kept an emoji `icon` key after the rest became `Icon`
-components. The page rendered `<undefined />` and threw React error #130. Lint
-passed. The production build passed. All tests passed. The only thing that caught
-it was loading the page.
+Instead the Fernet key is derived: `Fernet(urlsafe_b64encode(sha256(ENCRYPTION_KEY).digest()))` ([`backend/security.py:18-27`](backend/security.py)). SHA-256 is a weak KDF, which does not matter here because the input is already a high-entropy random secret rather than a user password. Determinism is the property that matters — restarts must be able to read ciphertext written before them.
 
-[`frontend/src/screens.render.test.jsx`](frontend/src/screens.render.test.jsx)
-now mounts all nine screens in jsdom, which catches the whole class: undefined
-components, bad hook calls, destructuring undefined during first paint.
+What it cost: a non-standard construction that a future reader has to stop and understand, and a rotation story that is quieter than it should be. Rotating `ENCRYPTION_KEY` does not raise; `decrypt_value` returns `None` and every affected account silently reads as having no key on file ([`backend/security.py:48-57`](backend/security.py)). That degradation is deliberate — one unreadable key should not crash an unrelated insight request — but it means a botched rotation looks like users mass-deleting their keys.
 
-I confirmed it works by reintroducing the exact bug: the build still succeeds, the
-render test fails with "Element type is invalid." A regression test you have not
-watched fail is a guess.
+### One date authority, and day arithmetic that a DST transition cannot move
 
-### 3. Two silent-failure modes, turned into build failures
+Every client date came from `new Date().toISOString()`, which is UTC, while the server stamped completions with the timezone stored on the user record. For anyone not on UTC there was a window each day where the dashboard queried one date and the server had written another, and the checkmark appeared to reset.
 
-A bulk replace of `bg-orange-50` → `bg-accent-soft` also matched inside
-`bg-orange-500`, leaving `bg-accent-soft0` on 24 elements. Tailwind emits nothing
-for an unknown class, so the notification toggles lost their colour with no error
-anywhere. Separately, raw palette steps creeping back in were what left ~40 colours
-with no dark-mode variant to begin with.
+The obvious fix is to send the client's timezone along with each request. I made the account timezone the single source instead, with all day arithmetic in [`frontend/src/utils/date.js`](frontend/src/utils/date.js) operating on UTC-midnight dates constructed from `YYYY-MM-DD` strings. Doing the arithmetic at UTC midnight is what makes a DST transition unable to shift a day boundary; doing it on local `Date` objects does not survive the hour that repeats. The server mirrors this in `get_user_today` ([`backend/logic.py:46-53`](backend/logic.py)). I checked it with `Pacific/Midway` while UTC was a day ahead.
 
-Both are now test failures, not review items —
-[`tokens.test.js`](frontend/src/tokens.test.js) parses every source file and
-rejects malformed token names, raw palette steps, and orphaned `dark:` variants.
+The same pass found the streak reading zero every morning: `compute_global_streak` stopped at the first incomplete day starting from today, so a 30-day streak showed as 0 from midnight until the last habit was ticked. Today is now a grace day — it extends the streak when complete, is forgiven when not, and any earlier gap still ends it ([`backend/logic.py:70-112`](backend/logic.py)).
 
-The companion, [`contrast.test.js`](frontend/src/contrast.test.js), checks the
-palette against WCAG AA in both themes. Every contrast failure found in review was
-token-level, not screen-level — one value slightly too light failed identically on
-nine screens at once. 41 failures went to 0, and the causes were almost all in the
-palette: `--text-subtle` failed AA in *both* themes; the light accent cleared only
-3.56:1, and since contrast is symmetric it failed both as text *and* as a fill. The
-test comment states what it cannot catch (a component pairing two valid tokens
-badly), because a test that overstates its coverage is worse than none.
+What it cost: native `Date` arithmetic and locale handling are off the table, day maths runs on string keys, and every query site now has to resolve a timezone. Seven `try/except ZoneInfo` blocks across `server.py`, `logic.py` and `achievements.py` are the visible price of that.
 
-### 4. Client and server disagreed about what day it was
+### The database holds the one invariant that matters
 
-Every client date came from `new Date().toISOString()` — UTC — while the server
-stamped completions using the timezone on the user record. For anyone off UTC there
-was a window each day where the dashboard queried one date and the server wrote
-another, and the checkmark appeared to reset.
+A double-tap on a habit, or two tabs open, could write two completions for the same habit on the same day, which inflates points, streaks and achievements.
 
-Fixed by making [`frontend/src/utils/date.js`](frontend/src/utils/date.js) the
-single date authority, with day arithmetic on UTC-midnight dates built from
-`YYYY-MM-DD` strings so a DST transition cannot shift it. Verified with
-`Pacific/Midway` while UTC was a day ahead.
+The obvious guard is to check for an existing row before inserting. That check is still there because it avoids an exception in the common case, but it is advisory — between the read and the write, anything can happen. The guard is a unique index on `(user_id, habit_id, date)` ([`backend/db.py:14-16`](backend/db.py)). The endpoint catches `DuplicateKeyError` and returns the row that won rather than raising, which makes the POST idempotent ([`backend/server.py:401-424`](backend/server.py)).
 
-The same audit found the streak displayed 0 every morning — `compute_global_streak`
-broke on the first incomplete day starting from *today*, so a 30-day streak read 0
-from midnight until the last habit was ticked. Today is now a grace day: it extends
-the streak when complete, is forgiven when not, and any earlier gap still ends it.
+What it cost: recording a habit more than once a day is now impossible by construction, which forecloses a feature someone will eventually want. The lost race also pays a failed round trip to Mongo. Worse, index creation is wrapped in a `try/except` so that pre-existing duplicate data cannot crash startup — and the fallback is a *non-unique* index ([`backend/db.py:13-24`](backend/db.py)). The concurrency guard can therefore disappear at boot, leaving a warning in the log and an endpoint that looks fine.
 
----
+### Charts are hand-drawn SVG, and colour is a test failure rather than a review comment
 
-## Decisions
+Recharts was the heaviest dependency in the tree and was imported for one area chart and one bar chart. It also hardcoded its grid and axis colours per theme (`stroke="#374151"`), so it was wrong in one of the two themes by construction. Replacing it with hand-drawn SVG that reads the same tokens as everything else removed the dependency and fixed the theming in the same change.
 
-**Semantic tokens, not a palette.** `tokens.css` defines `surface` / `ink` /
-`accent` as space-separated RGB with `<alpha-value>`. Components never name a
-colour. This makes "a value with no dark variant" structurally impossible rather
-than a thing to remember, and it is enforced by the tests above.
+That only works if the tokens themselves hold, and they did not. A bulk replacement of `bg-orange-50` with `bg-accent-soft` also matched inside `bg-orange-500`, leaving `bg-accent-soft0` on 24 elements. Tailwind emits nothing at all for an unknown class, so those elements lost their colour with no error in the build, in lint, or in review. [`frontend/src/tokens.test.js`](frontend/src/tokens.test.js) now parses every source file and rejects malformed token names, raw palette steps, and orphaned `dark:` variants. [`frontend/src/contrast.test.js`](frontend/src/contrast.test.js) checks the palette against WCAG AA in both themes.
 
-**Build-time config is a correctness problem.** The frontend's API host cannot be a
-runtime env var — Vite inlines it. That single fact caused the outage in §1,
-and it is why the Dockerfile asserts on the artifact and the deploy workflow
-re-fetches the shipped bundle to check it.
-
-**Scheduler slots are claimed, not fired.** The notification job runs every minute
-against a grace window, deduping on a per-slot `last_daily_sent` date
-([`backend/notifications.py`](backend/notifications.py#L116-L166)), so a restart
-inside the window neither double-sends nor drops the send.
-
-**TTL indexes only act on BSON dates.** MongoDB's TTL monitor silently ignores
-anything else, so rows written before the index existed — with ISO *strings* —
-would have sat there forever. [`migrate_token_expiry.py`](backend/migrate_token_expiry.py)
-converts them; dry-run by default, idempotent, and it leaves an unparseable expiry
-alone rather than guessing.
-
-**Deleting beats adding.** Of 46 files in `components/ui/`, application code
-imported two. Recharts was the heaviest dependency in the tree, imported for two
-charts, and its hardcoded `stroke="#374151"` was wrong in one theme by
-construction — both are now hand-drawn SVG that reads from the tokens.
-
----
-
-## Measured
-
-| | Before | Now |
-|---|---|---|
-| Frontend initial load | 283,951 B gzipped, no route splitting | 125 kB gzipped, route-split |
-| Frontend runtime dependencies | 53 | **7** |
-| Frontend source files | 73 | 40 |
-| Contrast failures (7 screens × 2 themes) | 41 | **0** |
-| Production build | tens of seconds (CRA) | **~0.95 s** (Vite) |
-| Tests | 0 | **57 pytest + 66 vitest** |
-
-Before-numbers are from the commits that changed them, measured over HTTP rather
-than estimated. Reproduce the current ones with `yarn build` and `pytest`.
-
-Backend is 1,936 lines across 9 modules, plus three one-off migration scripts.
-36 endpoints, 7 rate-limited.
-
----
+What it cost: both tests parse source with regular expressions, so they are brittle and will reject legitimate new patterns until someone updates the allowed list. Ad-hoc one-off colours are banned outright. And `contrast.test.js` states in its own comment what it cannot see — a component that pairs two individually valid tokens badly, such as white text on a light fill, passes it.
 
 ## Running it
 
+The test suite needs no configuration. Everything else needs `backend/.env`, which is gitignored.
+
 ```bash
-# Backend — needs MONGO_URL and JWT_SECRET_KEY in backend/.env
-cd backend && python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn server:app --reload --port 8001
-
-# Frontend
-cd frontend && yarn install && VITE_BACKEND_URL=http://localhost:8001 yarn dev
-
-# Tests
-cd backend && pytest          # 57 unit; -m integration needs a live server
-cd frontend && yarn test      # 66
+git clone https://github.com/kritish08/forge.git && cd forge
 ```
 
-Docker: `docker compose -f compose.yaml up -d --build`. The `-f` is load-bearing —
-`compose.dev.yaml` is opt-in precisely because a file named
-`docker-compose.override.yml` auto-merges into a bare `docker compose`, which is how
-a localhost API host once got baked into a production image. Full notes in
-[DEPLOYMENT.md](DEPLOYMENT.md).
+Backend:
 
-AI insights are bring-your-own-key: each account adds an OpenAI key in Settings,
-validated against the API before it is stored, encrypted at rest, never returned to
-the client. Without one, insights fall back to templates.
+```bash
+cd backend
+python3.11 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt   # -r requirements.txt has no pytest
+.venv/bin/python -m pytest                      # 57 pass, 18 integration tests deselected
+```
 
----
+`requirements.txt` alone is enough to run the server but not to test it — pytest and pyflakes live in `requirements-dev.txt` so they stay out of the production image. Installing the wrong one gives you `No module named pytest`.
 
-## Known limits
+To start the server, create `backend/.env` with at least `MONGO_URL`, `DB_NAME` and `JWT_SECRET_KEY`. Without `MONGO_URL` the import fails immediately with `KeyError: 'MONGO_URL'` from [`backend/db.py:5`](backend/db.py), before any server starts.
 
-- The notification scheduler sweeps every user every minute. Fine at this size,
-  wrong at any real one — it should be a per-slot query or a job queue.
-- `manifest.json` still points at SVG icons; PWA install prompts want PNGs.
-- The integration suite (`-m integration`) needs a live server and is deselected by
-  default, so CI covers pure logic and render smoke tests only.
-- No E2E tests. Every bug in §1 and §2 would have been caught by one.
+```bash
+.venv/bin/uvicorn server:app --reload --port 8001
+```
+
+Frontend:
+
+```bash
+cd frontend
+yarn install
+yarn test                                        # 66 pass, no env needed
+VITE_BACKEND_URL=http://localhost:8001 yarn dev  # http://localhost:3000
+```
+
+`VITE_BACKEND_URL` is required and its absence is silent. `yarn build` with the variable unset **succeeds** — it does not warn — and emits a bundle whose axios base URL is `undefined + "/api"`, so every request goes to `/undefined/api/...` and the dev server answers with the app shell instead of JSON. The Docker build refuses this; a bare `yarn build` does not.
+
+Docker, for production:
+
+```bash
+DOMAIN_NAME=example.com docker compose -f compose.yaml up -d --build
+```
+
+The `-f compose.yaml` is load-bearing. `compose.dev.yaml` has to be asked for by name because Compose auto-merges any file called `docker-compose.override.yml` into a bare `docker compose` command, which is how a `localhost` API host once got compiled into a production image. `DOMAIN_NAME` must be set — see the first item under "What's imperfect" for what happens when it is not. Full deployment notes are in [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## What's imperfect
+
+**An unset `DOMAIN_NAME` passes every build guard.** Compose interpolates it into `VITE_BACKEND_URL: https://api-${DOMAIN_NAME}`, so an unset variable yields the non-empty string `https://api-`. I built a bundle with that value and ran the Dockerfile's three checks against it by hand: the non-empty test passes, the bundle does contain `https://api-`, and there is no `undefined/api`. All three pass and the shipped app points at an invalid host. The guard I wrote for the original outage does not cover its nearest neighbour.
+
+**The scheduler's two jobs have opposite failure modes, and the comments claim otherwise.** `daily_reminder_job` sends and then records the send ([`backend/notifications.py:131-166`](backend/notifications.py)), so a crash in between re-sends on the next tick. `weekly_summary_job` records first and then sends ([`backend/notifications.py:191-193`](backend/notifications.py)), so a crash in between drops the email. Both are at-least-once and at-most-once respectively; both comments describe them as firing exactly once. Neither ordering is wrong on its own, but I have not decided which each job should have, so the code and its documentation currently disagree.
+
+**Running more than one backend replica would double every notification.** APScheduler runs in-process ([`backend/server.py:806-813`](backend/server.py)) and the dedupe is a read-then-write rather than a conditional update, so two instances would both find the slot unsent and both send. `compose.yaml` pins `container_name`, which makes horizontal scaling fail loudly rather than quietly, but nothing states the constraint.
+
+**`achievements` has no index at all.** It is absent from [`backend/db.py`](backend/db.py) while being queried in five places, including on every single check-in via `check_and_award_achievements`. Every one of those is a collection scan. Its dedupe is also a read-then-insert with no unique index behind it, so two concurrent check-ins can award the same badge twice — the exact lesson applied to `completions` and not carried across.
+
+**Rate limits are almost certainly global rather than per-client.** slowapi keys on `get_remote_address`, and uvicorn runs without `--proxy-headers` behind both Traefik and a Cloudflare Tunnel ([`compose.yaml:28`](compose.yaml)), so every request should resolve to the proxy's address. That would make the limits shared across everyone: three password-reset requests per hour and fifteen logins per minute for the entire internet combined. I established this by reading the configuration and have not confirmed it against a running deployment.
+
+**`PUT /habits/{id}` does not clamp priority, and `POST /habits` does.** `create_habit` bounds it to 1–3 ([`backend/server.py:346`](backend/server.py)); `update_habit` writes whatever arrives ([`backend/server.py:359-361`](backend/server.py)), and `points_earned` is snapshotted from it at completion time. I confirmed the model accepts `priority: 9999` and `-5`; I have not executed the full request chain against a database.
+
+**The access token sits in `localStorage` with a 24-hour lifetime and no revocation.** The refresh token is an httpOnly cookie, but the credential that authorises every request is readable by any script on the page, and nothing on the server can invalidate it — logout and password reset both clear refresh tokens only. There is also no Content-Security-Policy, or any other security header, anywhere in [`frontend/nginx.conf`](frontend/nginx.conf).
+
+**`push_subscription` is stored as an unvalidated dict** and handed to `pywebpush`, which will POST to whatever endpoint URL it contains.
+
+**The service worker's cache is never purged.** `activate` deletes caches whose name differs from `CACHE`, but that name is the constant `forge-v2` ([`frontend/public/service-worker.js:24`](frontend/public/service-worker.js)), so hashed assets from every past deploy accumulate indefinitely. The same file promises a precache manifest "with the Vite migration and vite-plugin-pwa"; the Vite migration shipped and `vite-plugin-pwa` was never added.
+
+**Most of the read path loads entire histories into memory.** `/analytics/stats`, `/analytics/patterns`, `/ai/insight`, `check_and_award_achievements` and the daily reminder job each pull a user's complete completion history with `.to_list(10000)` and aggregate in a Python loop. There is no aggregation pipeline and no pagination. This is adequate at the current size and is the first thing that would break under real load.
+
+**Unmeasured.** The `?since=` parameter on `/completions`, the client-side cache, and parallel habit creation during onboarding were all changed for speed and none were benchmarked before or after. The client cache also has no expiry — `useCachedQuery` writes a timestamp on every entry and never reads it, so entries live until an explicit invalidation or a page reload.
+
+**No end-to-end tests.** The only suite that exercises HTTP routes is marked `integration` and deselected by default, so CI covers pure logic, token handling, encryption and render smoke tests. Nothing tests authorisation — no test asserts that one user cannot modify another's habit, even though that rule is enforced in query filters across five endpoints.
+
+## Stack
+
+- Python 3.11, FastAPI, Motor, APScheduler, slowapi, python-jose, passlib/bcrypt, cryptography
+- React 19, Vite 6, Tailwind CSS 3, React Router; seven runtime dependencies total
+- MongoDB (Atlas in production)
+- Vitest and Testing Library; pytest and pyflakes
+- Docker, nginx, Traefik, Cloudflare Tunnel
+- GitHub Actions: pytest, a pyflakes undefined-name gate, vitest, eslint and a production build on every push. eslint is its own step rather than part of the build, because Vite — unlike Create React App under `CI=true` — does not lint during compilation, so nothing would otherwise fail on a lint error.
+- OpenAI, per-account key, supplied by the user
+
+## Licence
+
+No licence file is present, so default copyright applies and no permissions are granted.
