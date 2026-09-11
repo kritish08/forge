@@ -1,137 +1,228 @@
-# FORGE
+<div align="center">
 
-A habit tracker with a FastAPI backend, MongoDB, and a React frontend, self-hosted behind Traefik and a Cloudflare Tunnel. It runs at [forge.zerp.me](https://forge.zerp.me).
+# 🔥 FORGE
 
-The app began as a generated scaffold. The first commit is that scaffold, squashed from the 60 machine-written commits it arrived as and left attributed to the generator; every commit after it is hand-written. It worked well enough to demo and badly enough to be unusable: the production frontend was compiled without an API host and nobody could sign in, the streak counter read zero every morning, and the service worker had never successfully cached anything. Most of the work in this repository is the audit that followed, and the decisions below came out of specific failures rather than from a design document.
+**A self-hosted habit tracker that coaches you from your own data.**
+FastAPI · MongoDB · React — behind Traefik and a Cloudflare Tunnel.
 
-## Architecture, and why
+[![CI](https://github.com/kritish08/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/kritish08/forge/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
+![React](https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=black)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.11x-009688?logo=fastapi&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-129%20passing-brightgreen)
 
-### The frontend's API host is asserted in the compiled bundle, not just passed to the build
+[Live at forge.zerp.me](https://forge.zerp.me)
 
-Production served a frontend with no API host. Every request resolved to `/undefined/api/...`, hit the nginx SPA fallback, and came back as HTML with a 200 status. The backend was healthy the whole time and the build had succeeded.
+</div>
 
-The obvious fix is to pass `VITE_BACKEND_URL` as a Docker build argument, since Vite inlines it at compile time and a runtime `env_file` cannot reach it. I did that, and then added a check that the argument is non-empty. That check is necessary and not sufficient: a value can be supplied and still not reach the compiler. So after `yarn build`, the image greps the emitted JavaScript and fails unless it contains the expected host ([`frontend/Dockerfile:38-54`](frontend/Dockerfile)).
+---
 
-The assertion is positive on purpose. While investigating the outage I grepped the live bundle for `undefined/api`, found nothing, and nearly concluded the deployment was fine. The minifier had folded the concatenation to `void 0+"/api"`, joined at runtime, which no search for the literal string would ever find. A negative assertion only holds if the searcher can predict how the toolchain will mangle the thing being searched for. A positive one does not depend on that.
+FORGE tracks habits, notices when you actually follow through, and writes coaching from *your* completion history rather than generic advice. That is the product.
 
-What it cost: the image is no longer environment-agnostic. One image per API host, and the same bundle cannot be promoted from staging to production. The assertion is also coupled to how Rollup emits string literals, so a change in that area breaks the build rather than the app — which is the direction I wanted, but it is a real maintenance cost.
+What is worth reading, though, is the audit trail. FORGE began life as a generated scaffold — the first commit is that scaffold, still attributed to the generator — and it worked well enough to demo and badly enough to be unusable: the production frontend was compiled with no API host and nobody could sign in, the streak read zero every morning, and the service worker had never once cached anything. Most of the commits here are the work of turning that into something that holds up. If you are here to see how someone reasons about a system they did not write, the sections below are the tour, and `git log` is the long version.
 
-### The Fernet key is derived from the configured secret rather than being one
+## What it does
 
-Each account stores its own OpenAI key, so the key has to be recoverable rather than hashed. Fernet is the obvious choice, and it requires exactly 32 url-safe-base64 bytes.
+- **Habit tracking** with priorities, custom schedules (daily, specific days, N-times-per-week), and streaks that survive an unfinished today.
+- **AI coach** in three tones (supportive, strategic, direct), bring-your-own OpenAI key, encrypted at rest — with a template fallback when no key is set.
+- **Analytics** — a completion heatmap, day-of-week and time-of-day patterns, and a schedule-aware consistency score that every surface agrees on.
+- **Gamification** — points, levels, and achievements awarded server-side.
+- **Notifications** — web push and email reminders on the days and times you choose, plus a weekly summary.
+- **Installable PWA** — offline shell, dark mode, phone-native layout.
 
-The `ENCRYPTION_KEY` already deployed decodes to 48 bytes. It had been generated with `openssl rand -hex 32`, which is a perfectly good secret and not a Fernet key. Taking the textbook path would have meant `Fernet(ENCRYPTION_KEY)` raising at import, which is how the feature would have shipped: correct-looking in review, dead on arrival in production, and only discoverable by a user trying to save a key.
+## Architecture
 
-Instead the Fernet key is derived: `Fernet(urlsafe_b64encode(sha256(ENCRYPTION_KEY).digest()))` ([`backend/security.py:18-27`](backend/security.py)). SHA-256 is a weak KDF, which does not matter here because the input is already a high-entropy random secret rather than a user password. Determinism is the property that matters — restarts must be able to read ciphertext written before them.
+```mermaid
+flowchart LR
+    subgraph client["Browser · React 19 PWA"]
+        UI["App + service worker<br/>offline shell, cache-first assets"]
+    end
 
-What it cost: a non-standard construction that a future reader has to stop and understand, and a rotation story that is quieter than it should be. Rotating `ENCRYPTION_KEY` does not raise; `decrypt_value` returns `None` and every affected account silently reads as having no key on file ([`backend/security.py:48-57`](backend/security.py)). That degradation is deliberate — one unreadable key should not crash an unrelated insight request — but it means a botched rotation looks like users mass-deleting their keys.
+    subgraph edge["Edge"]
+        CF["Cloudflare Tunnel<br/>TLS termination"]
+        TR["Traefik<br/>tls=true, no ACME"]
+    end
 
-### One date authority, and day arithmetic that a DST transition cannot move
+    subgraph server["FastAPI · uvicorn"]
+        API["36 REST endpoints<br/>JWT auth · 7 rate-limited"]
+        SCH["APScheduler<br/>in-process, every minute"]
+    end
 
-Every client date came from `new Date().toISOString()`, which is UTC, while the server stamped completions with the timezone stored on the user record. For anyone not on UTC there was a window each day where the dashboard queried one date and the server had written another, and the checkmark appeared to reset.
+    DB[("MongoDB Atlas")]
+    OAI["OpenAI<br/>per-user key"]
+    OUT["SMTP · Web Push"]
 
-The obvious fix is to send the client's timezone along with each request. I made the account timezone the single source instead, with all day arithmetic in [`frontend/src/utils/date.js`](frontend/src/utils/date.js) operating on UTC-midnight dates constructed from `YYYY-MM-DD` strings. Doing the arithmetic at UTC midnight is what makes a DST transition unable to shift a day boundary; doing it on local `Date` objects does not survive the hour that repeats. The server mirrors this in `get_user_today` ([`backend/logic.py:46-53`](backend/logic.py)). I checked it with `Pacific/Midway` while UTC was a day ahead.
+    UI -->|https| CF --> TR --> API
+    API <--> DB
+    SCH <--> DB
+    API -->|user's own key| OAI
+    SCH --> OUT
+```
 
-The same pass found the streak reading zero every morning: `compute_global_streak` stopped at the first incomplete day starting from today, so a 30-day streak showed as 0 from midnight until the last habit was ticked. Today is now a grace day — it extends the streak when complete, is forgiven when not, and any earlier gap still ends it ([`backend/logic.py:70-112`](backend/logic.py)).
+The frontend and API are separate origins (`forge.zerp.me` and `api-forge.zerp.me`), both proxied through one Cloudflare Tunnel. Traefik speaks `tls=true` rather than running ACME, because the origin is never reachable for a Let's Encrypt challenge — Cloudflare terminates TLS at the edge.
 
-What it cost: native `Date` arithmetic and locale handling are off the table, day maths runs on string keys, and every query site now has to resolve a timezone. Seven `try/except ZoneInfo` blocks across `server.py`, `logic.py` and `achievements.py` are the visible price of that.
+## The decision worth reading first
 
-### The database holds the one invariant that matters
+**Production served a perfectly good build that nobody could log into.** Every request resolved to `/undefined/api/...`, hit the nginx SPA fallback, and came back as HTML with a `200`. The backend was healthy the whole time; the build had succeeded; CI was green.
 
-A double-tap on a habit, or two tabs open, could write two completions for the same habit on the same day, which inflates points, streaks and achievements.
+Vite inlines `VITE_BACKEND_URL` at *build* time, `.dockerignore` excludes `.env`, and compose was handing the variable to the *runtime* nginx container. Nothing ever reached the compiler. The obvious fix is to pass it as a Docker build argument and check it is non-empty — necessary but not sufficient, because a value can be supplied and still not reach the bundle.
 
-The obvious guard is to check for an existing row before inserting. That check is still there because it avoids an exception in the common case, but it is advisory — between the read and the write, anything can happen. The guard is a unique index on `(user_id, habit_id, date)` ([`backend/db.py:14-16`](backend/db.py)). The endpoint catches `DuplicateKeyError` and returns the row that won rather than raising, which makes the POST idempotent ([`backend/server.py:401-424`](backend/server.py)).
+So the [Dockerfile](frontend/Dockerfile) asserts on the **compiled output**: after `yarn build`, it greps the emitted JavaScript and fails unless the expected host is present.
 
-What it cost: recording a habit more than once a day is now impossible by construction, which forecloses a feature someone will eventually want. The lost race also pays a failed round trip to Mongo. Worse, index creation is wrapped in a `try/except` so that pre-existing duplicate data cannot crash startup — and the fallback is a *non-unique* index ([`backend/db.py:13-24`](backend/db.py)). The concurrency guard can therefore disappear at boot, leaving a warning in the log and an endpoint that looks fine.
+```dockerfile
+RUN set -eu; \
+    if ! grep -rqF "$VITE_BACKEND_URL" build/static/js; then \
+      echo "ERROR: built bundle does not contain '$VITE_BACKEND_URL'."; exit 1; fi; \
+    if grep -rq "undefined/api" build/static/js; then \
+      echo "ERROR: built bundle contains 'undefined/api'."; exit 1; fi
+```
 
-### Charts are hand-drawn SVG, and colour is a test failure rather than a review comment
+The positive assertion is the one that matters. While chasing the outage I grepped the live bundle for `undefined/api`, found nothing, and nearly cleared a deployment that was in fact broken — the minifier had folded the concatenation to `void 0+"/api"`, joined at runtime, which no search for the literal string would ever find. **A positive assertion survives the toolchain; a negative one only holds if you can predict how the toolchain will mangle what you are looking for.**
 
-Recharts was the heaviest dependency in the tree and was imported for one area chart and one bar chart. It also hardcoded its grid and axis colours per theme (`stroke="#374151"`), so it was wrong in one of the two themes by construction. Replacing it with hand-drawn SVG that reads the same tokens as everything else removed the dependency and fixed the theming in the same change.
+The cost: the image is no longer environment-agnostic — one image per API host — and the assertion is coupled to how Rollup emits string literals.
 
-That only works if the tokens themselves hold, and they did not. A bulk replacement of `bg-orange-50` with `bg-accent-soft` also matched inside `bg-orange-500`, leaving `bg-accent-soft0` on 24 elements. Tailwind emits nothing at all for an unknown class, so those elements lost their colour with no error in the build, in lint, or in review. [`frontend/src/tokens.test.js`](frontend/src/tokens.test.js) now parses every source file and rejects malformed token names, raw palette steps, and orphaned `dark:` variants. [`frontend/src/contrast.test.js`](frontend/src/contrast.test.js) checks the palette against WCAG AA in both themes.
+## One thing that reads better as a picture
 
-What it cost: both tests parse source with regular expressions, so they are brittle and will reject legitimate new patterns until someone updates the allowed list. Ad-hoc one-off colours are banned outright. And `contrast.test.js` states in its own comment what it cannot see — a component that pairs two individually valid tokens badly, such as white text on a light fill, passes it.
+A double-tap on a habit, or two open tabs, must never write two completions for the same day — that would inflate points, streaks and achievements. The application-level "does a row exist?" check is advisory; between the read and the write, anything can happen. The real guard is a **unique index** on `(user_id, habit_id, date)`, and the endpoint turns the lost race into a correct answer instead of an error.
 
-## Running it
+```mermaid
+sequenceDiagram
+    participant A as Tab A
+    participant B as Tab B
+    participant API as FastAPI
+    participant DB as MongoDB (unique index)
 
-The test suite needs no configuration. Everything else needs `backend/.env`, which is gitignored.
+    A->>API: POST /completions {habit, today}
+    B->>API: POST /completions {habit, today}
+    API->>DB: insert (A)
+    API->>DB: insert (B)
+    DB-->>API: A ok
+    DB-->>API: B DuplicateKeyError
+    Note over API: catch → fetch the row that won
+    API-->>A: 201 completion
+    API-->>B: 200 same completion
+```
+
+Both callers get the same single completion; the endpoint is idempotent by construction ([`server.py:401-424`](backend/server.py), [`db.py:14-16`](backend/db.py)).
+
+## More decisions worth reading
+
+**The encryption key is derived, not required.** Each account stores its own OpenAI key, so it has to be recoverable, so it is encrypted with Fernet — which needs exactly 32 url-safe-base64 bytes. The `ENCRYPTION_KEY` already deployed was made with `openssl rand -hex 32` and decodes to 48. The textbook path (`Fernet(ENCRYPTION_KEY)`) raises at import, which would have shipped a bring-your-own-key feature that looked correct in review and was dead on arrival. So the Fernet key is derived: `Fernet(b64(sha256(ENCRYPTION_KEY)))` ([`security.py:18-27`](backend/security.py)). SHA-256 is a fine KDF over an already-random secret, and it is deterministic so restarts keep reading old ciphertext. The cost lives in rotation: a rotated key does not error, it silently reads every stored key as absent.
+
+**One clock, and day maths a DST switch cannot move.** The client sent UTC while the server stamped completions in the user's timezone, so anyone off UTC had a daily window where the dashboard and the server disagreed about the date and the checkmark appeared to reset. Now [`utils/date.js`](frontend/src/utils/date.js) is the single date authority, doing arithmetic on UTC-midnight dates built from `YYYY-MM-DD` strings — the one form a DST transition cannot shift. The cost is seven `try/except ZoneInfo` blocks, one at every query site.
+
+**Colour is a test, not a review comment.** A bulk rename left `bg-accent-soft0` on 24 elements, and Tailwind emits *nothing* for an unknown class, so they lost their colour with no error in build, lint or review. [`tokens.test.js`](frontend/src/tokens.test.js) now parses every source file for malformed token names and raw palette steps; [`contrast.test.js`](frontend/src/contrast.test.js) checks the palette against WCAG AA in both themes. This is also why the charts are hand-drawn SVG rather than Recharts — the library hardcoded `stroke="#374151"` per theme and was wrong in one by construction.
+
+## Measured, not asserted
+
+| | Before | Now |
+|---|---|---|
+| Frontend initial load | 283,951 B gzipped, one bundle | **125 kB** gzipped, route-split |
+| Runtime dependencies (frontend) | 53 | **7** |
+| Frontend source files | 73 | 40 |
+| Contrast failures (7 screens × 2 themes) | 41 | **0** |
+| Production build | tens of seconds (CRA) | **~0.95 s** (Vite) |
+| Automated tests | 0 | **63 pytest + 66 vitest** |
+
+Before-numbers come from the commits that changed them, measured over HTTP rather than estimated. The backend is ~2,000 lines across 9 modules plus three one-off migration scripts; 36 endpoints, 7 rate-limited.
+
+## Repo structure
+
+```
+forge/
+├── backend/            FastAPI · one module per concern
+│   ├── server.py         routes
+│   ├── logic.py          pure domain logic (streaks, schedules, dates)
+│   ├── ai.py             OpenAI insight + template fallback
+│   ├── notifications.py  scheduler, email, web push (SSRF-guarded)
+│   ├── security.py       JWT, bcrypt, Fernet-at-rest
+│   ├── db.py             Mongo indexes (the invariants live here)
+│   └── tests/            pytest — pure logic, security, encryption
+├── frontend/           React 19 + Vite
+│   ├── src/              9 screens, semantic-token CSS, hand-drawn SVG charts
+│   ├── Dockerfile        asserts the API host into the bundle
+│   └── nginx.conf        gzip, immutable /static, no-cache SPA entry
+├── compose.yaml        production (Traefik labels, build args)
+└── .github/workflows/  CI: pytest, pyflakes, vitest, eslint, build
+```
+
+## Quick start
+
+The test suites need no configuration. Everything else reads `backend/.env`, which is gitignored.
 
 ```bash
 git clone https://github.com/kritish08/forge.git && cd forge
-```
 
-Backend:
-
-```bash
+# Backend
 cd backend
 python3.11 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt   # -r requirements.txt has no pytest
-.venv/bin/python -m pytest                      # 57 pass, 18 integration tests deselected
-```
-
-`requirements.txt` alone is enough to run the server but not to test it — pytest and pyflakes live in `requirements-dev.txt` so they stay out of the production image. Installing the wrong one gives you `No module named pytest`.
-
-To start the server, create `backend/.env` with at least `MONGO_URL`, `DB_NAME` and `JWT_SECRET_KEY`. Without `MONGO_URL` the import fails immediately with `KeyError: 'MONGO_URL'` from [`backend/db.py:5`](backend/db.py), before any server starts.
-
-```bash
+.venv/bin/pip install -r requirements-dev.txt   # requirements.txt alone has no pytest
+.venv/bin/python -m pytest                      # 63 pass, 18 integration deselected
+#   to run the server, put MONGO_URL, DB_NAME, JWT_SECRET_KEY in backend/.env
 .venv/bin/uvicorn server:app --reload --port 8001
-```
 
-Frontend:
-
-```bash
+# Frontend (new shell)
 cd frontend
 yarn install
-yarn test                                        # 66 pass, no env needed
+yarn test                                        # 66, no env needed
 VITE_BACKEND_URL=http://localhost:8001 yarn dev  # http://localhost:3000
 ```
 
-`VITE_BACKEND_URL` is required and its absence is silent. `yarn build` with the variable unset **succeeds** — it does not warn — and emits a bundle whose axios base URL is `undefined + "/api"`, so every request goes to `/undefined/api/...` and the dev server answers with the app shell instead of JSON. The Docker build refuses this; a bare `yarn build` does not.
+> **Heads-up:** `yarn build` with `VITE_BACKEND_URL` unset **succeeds silently** and ships a bundle that calls `/undefined/api/...`. The Docker build refuses that; a bare `yarn build` does not. See the first decision above.
 
-Docker, for production:
+Production is one command — the `-f` is load-bearing, because a file named `docker-compose.override.yml` auto-merges into a bare `docker compose` and once baked a `localhost` API host into a production image:
 
 ```bash
 DOMAIN_NAME=example.com docker compose -f compose.yaml up -d --build
 ```
 
-The `-f compose.yaml` is load-bearing. `compose.dev.yaml` has to be asked for by name because Compose auto-merges any file called `docker-compose.override.yml` into a bare `docker compose` command, which is how a `localhost` API host once got compiled into a production image. `DOMAIN_NAME` must be set — see the first item under "What's imperfect" for what happens when it is not. Full deployment notes are in [DEPLOYMENT.md](DEPLOYMENT.md).
+Full deployment notes: [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Environment
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `MONGO_URL` | yes | MongoDB connection string (import fails loudly without it) |
+| `DB_NAME` | yes | Database name |
+| `JWT_SECRET_KEY` | yes | Signs access and refresh tokens |
+| `ENCRYPTION_KEY` | for BYOK | Any high-entropy secret; the Fernet key is derived from it |
+| `OPENAI_API_KEY` | optional | Server-wide fallback; omit for pure bring-your-own-key |
+| `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` | optional | Web push |
+| `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` | optional | Email reminders |
+| `VITE_BACKEND_URL` | build-time | Inlined into the bundle; **not** a runtime variable |
+
+## Security notes
+
+- **Auth** is a JWT access token plus an httpOnly refresh cookie; the token's `type` claim is enforced on decode, so a refresh or reset token can never be used as an access token ([`security.py:74-83`](backend/security.py)).
+- **BYOK keys** are validated against OpenAI before storage, encrypted at rest, and never returned to the client — responses carry only a masked last-four ([`server.py`](backend/server.py), `public_user`).
+- **Reset tokens** are stored as a SHA-256 digest, so database read access alone cannot complete a pending reset.
+- **Web push** endpoints are attacker-supplied and the server POSTs to them, so they are validated against the internal network (https only, no private / loopback / link-local / reserved host) at store *and* send time, and the test endpoint no longer reflects the upstream response — this closed an authenticated SSRF ([`notifications.py`](backend/notifications.py), `push_endpoint_is_safe`).
+- Honest gaps are in the next section.
 
 ## What's imperfect
 
-**An unset `DOMAIN_NAME` passes every build guard.** Compose interpolates it into `VITE_BACKEND_URL: https://api-${DOMAIN_NAME}`, so an unset variable yields the non-empty string `https://api-`. I built a bundle with that value and ran the Dockerfile's three checks against it by hand: the non-empty test passes, the bundle does contain `https://api-`, and there is no `undefined/api`. All three pass and the shipped app points at an invalid host. The guard I wrote for the original outage does not cover its nearest neighbour.
+Not decoration — these are real, and mostly measured against a running instance.
 
-**The scheduler's two jobs have opposite failure modes, and the comments claim otherwise.** `daily_reminder_job` sends and then records the send ([`backend/notifications.py:131-166`](backend/notifications.py)), so a crash in between re-sends on the next tick. `weekly_summary_job` records first and then sends ([`backend/notifications.py:191-193`](backend/notifications.py)), so a crash in between drops the email. Both are at-least-once and at-most-once respectively; both comments describe them as firing exactly once. Neither ordering is wrong on its own, but I have not decided which each job should have, so the code and its documentation currently disagree.
+- **Rate limits are shared across all clients, not per client.** uvicorn runs without a trusted `forwarded-allow-ips`, so behind Traefik every request keys to the proxy's address. Twenty logins with twenty distinct `X-Forwarded-For` values hit the limit at request 16 — one bucket for the whole internet. One user can lock everyone out of sign-in.
+- **`achievements` has no index and no unique constraint.** Every check-in scans the collection, and four concurrent completions on a fresh account produced five achievement rows for three achievements. The lesson from the completions unique index was not carried across.
+- **`PUT /habits/{id}` does not clamp priority; `POST /habits` does.** Updating a habit to `priority: 9999` sticks, and the next check-in is worth 9999 points — level 10 of 10 from one tap. Verified end to end.
+- **The scheduler's two jobs have opposite failure modes.** The daily job sends then records (at-least-once); the weekly records then sends (at-most-once). Neither is atomic, and running two backend replicas would double every notification — APScheduler is in-process.
+- **The access token lives in `localStorage` with no server-side revocation.** The refresh token is httpOnly, but the credential on every request is readable by any script for its 24-hour life, and there is no CSP.
+- **The push SSRF fix is not DNS-rebinding-proof.** Resolution happens at check time and again in the HTTP client, leaving a narrow window; closing it fully needs connection-level IP pinning pywebpush does not expose.
+- **Most read paths load whole histories into memory** (`.to_list(10000)` then aggregate in Python). Fine at this size, first thing to break under real load — it should be an aggregation pipeline.
+- **No end-to-end tests.** CI covers pure logic, security, encryption and render smoke tests; nothing asserts that one user cannot touch another's data, though that rule is enforced in query filters throughout.
 
-**Running more than one backend replica would double every notification.** APScheduler runs in-process ([`backend/server.py:806-813`](backend/server.py)) and the dedupe is a read-then-write rather than a conditional update, so two instances would both find the slot unsent and both send. `compose.yaml` pins `container_name`, which makes horizontal scaling fail loudly rather than quietly, but nothing states the constraint.
+## Tech stack
 
-**`achievements` has no index at all.** It is absent from [`backend/db.py`](backend/db.py) while being queried in five places, including on every check-in via `check_and_award_achievements`. Every one of those is a collection scan. Its dedupe is a read-then-insert with no unique index behind it, so concurrent check-ins award the same badge more than once. Four simultaneous completions against a fresh account produced five achievement rows for three distinct achievements — `first_checkin` three times and `perfect_day` twice. This is the lesson from the completions index, not carried across.
-
-**Rate limits are shared across all clients, not applied per client.** slowapi keys on `get_remote_address`, which returns `request.client.host`. uvicorn does rewrite that from `X-Forwarded-For` — `proxy_headers` defaults to `True`, so my first reading of this was wrong — but only when the immediate peer appears in `forwarded_allow_ips`, which defaults to `127.0.0.1`. Traefik reaches the backend over a Docker bridge network and is therefore not trusted, so every request keys to Traefik's address. Running the app with the peer outside the trust list, twenty logins carrying twenty distinct `X-Forwarded-For` values hit the 429 at request sixteen: one 15-per-minute bucket for all of them. In production that means three password-reset requests per hour and fifteen logins per minute for the entire internet combined, and one user can lock everyone out of sign-in. The fix is `--forwarded-allow-ips` set to the proxy network ([`compose.yaml:28`](compose.yaml)), not `--proxy-headers`, which is already on.
-
-**`PUT /habits/{id}` does not clamp priority, and `POST /habits` does.** `create_habit` bounds it to 1–3 ([`backend/server.py:346`](backend/server.py)); `update_habit` writes whatever arrives ([`backend/server.py:359-361`](backend/server.py)), and `points_earned` is snapshotted from it at completion time ([`backend/server.py:413`](backend/server.py)). Run against a database: creating a habit with `priority: 9999` stores 3, then updating the same habit to `priority: 9999` returns 200 and stores it, and the next check-in is worth 9999 points — enough to reach level 10 of 10 from a single tap.
-
-**The access token sits in `localStorage` with a 24-hour lifetime and no revocation.** The refresh token is an httpOnly cookie, but the credential that authorises every request is readable by any script on the page, and nothing on the server can invalidate it — logout and password reset both clear refresh tokens only. There is also no Content-Security-Policy, or any other security header, anywhere in [`frontend/nginx.conf`](frontend/nginx.conf).
-
-**The push endpoint is validated against the internal network, not DNS-rebinding-proof.** A stored push subscription is attacker-controlled and the server POSTs to it, which was an authenticated SSRF that reflected the target's response body to the caller. The endpoint is now required to be https and to resolve entirely off the private, loopback, link-local and reserved ranges, checked both when it is stored and again before each send ([`backend/notifications.py`](backend/notifications.py), `push_endpoint_is_safe`); the test endpoint no longer returns the upstream body. Resolution happens at check time and again in the HTTP client, so a determined DNS-rebinding attacker keeps a narrow window — closing it fully needs connection-level IP pinning that pywebpush does not expose.
-
-**The service worker's cache is never purged.** `activate` deletes caches whose name differs from `CACHE`, but that name is the constant `forge-v2` ([`frontend/public/service-worker.js:24`](frontend/public/service-worker.js)), so hashed assets from every past deploy accumulate indefinitely. The same file promises a precache manifest "with the Vite migration and vite-plugin-pwa"; the Vite migration shipped and `vite-plugin-pwa` was never added.
-
-**Most of the read path loads entire histories into memory.** `/analytics/stats`, `/analytics/patterns`, `/ai/insight`, `check_and_award_achievements` and the daily reminder job each pull a user's complete completion history with `.to_list(10000)` and aggregate in a Python loop. There is no aggregation pipeline and no pagination. This is adequate at the current size and is the first thing that would break under real load.
-
-**Unmeasured.** The `?since=` parameter on `/completions`, the client-side cache, and parallel habit creation during onboarding were all changed for speed and none were benchmarked before or after. The client cache also has no expiry — `useCachedQuery` writes a timestamp on every entry and never reads it, so entries live until an explicit invalidation or a page reload.
-
-**No end-to-end tests.** The only suite that exercises HTTP routes is marked `integration` and deselected by default, so CI covers pure logic, token handling, encryption and render smoke tests. Nothing tests authorisation — no test asserts that one user cannot modify another's habit, even though that rule is enforced in query filters across five endpoints.
-
-## Stack
-
-- Python 3.11, FastAPI, Motor, APScheduler, slowapi, python-jose, passlib/bcrypt, cryptography
-- React 19, Vite 6, Tailwind CSS 3, React Router; seven runtime dependencies total
-- MongoDB (Atlas in production)
-- Vitest and Testing Library; pytest and pyflakes
-- Docker, nginx, Traefik, Cloudflare Tunnel
-- GitHub Actions: pytest, a pyflakes undefined-name gate, vitest, eslint and a production build on every push. eslint is its own step rather than part of the build, because Vite — unlike Create React App under `CI=true` — does not lint during compilation, so nothing would otherwise fail on a lint error.
-- OpenAI, per-account key, supplied by the user
+| Layer | Choice |
+|---|---|
+| API | FastAPI, Motor (async Mongo), APScheduler, slowapi, python-jose, passlib/bcrypt, cryptography |
+| Frontend | React 19, Vite 6, Tailwind 3, React Router — 7 runtime deps total |
+| Data | MongoDB (Atlas in production) |
+| Tests | pytest + pyflakes · Vitest + Testing Library + eslint |
+| Infra | Docker, nginx, Traefik, Cloudflare Tunnel |
+| AI | OpenAI, per-account key supplied by the user |
 
 ## Licence
 
-No licence file is present, so default copyright applies and no permissions are granted.
+No licence file is present, so default copyright applies and no permissions are granted. Ask if you would like to use it.
